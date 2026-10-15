@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JSSE 后量子（PQC）迁移测试报告</title>
+<style>
+  :root {
+    --bg: #0f172a; --card: #1e293b; --card2: #273449;
+    --border: #334155; --text: #e2e8f0; --muted: #94a3b8;
+    --green: #22c55e; --red: #ef4444; --yellow: #eab308; --blue: #38bdf8;
+    --purple: #a78bfa; --orange: #fb923c;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: "Segoe UI", "Microsoft YaHei", sans-serif; line-height: 1.6; padding: 20px; }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+
+  h1 { font-size: 1.8rem; margin-bottom: 4px; background: linear-gradient(90deg,#38bdf8,#a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .subtitle { color: var(--muted); margin-bottom: 24px; font-size: .95rem; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin-bottom: 28px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+  .card .num { font-size: 1.7rem; font-weight: 700; }
+  .card .lbl { color: var(--muted); font-size: .8rem; margin-top: 2px; }
+  .green { color: var(--green); } .red { color: var(--red); } .yellow { color: var(--yellow); }
+  .blue { color: var(--blue); } .purple { color: var(--purple); } .orange { color: var(--orange); }
+
+  h2 { font-size: 1.25rem; margin: 32px 0 14px; padding-bottom: 6px; border-bottom: 2px solid var(--border); }
+  h3 { font-size: 1.05rem; margin: 18px 0 10px; color: var(--blue); }
+
+  table { width: 100%; border-collapse: collapse; margin: 10px 0 18px; font-size: .88rem; background: var(--card); border-radius: 10px; overflow: hidden; }
+  th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { background: var(--card2); color: var(--muted); font-weight: 600; }
+  tr:hover td { background: rgba(56,189,248,.06); }
+  .ok { color: var(--green); font-weight: 600; }
+  .bad { color: var(--red); font-weight: 600; }
+  .warn { color: var(--yellow); font-weight: 600; }
+
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: .75rem; font-weight: 600; }
+  .b-ok { background: rgba(34,197,94,.15); color: var(--green); border: 1px solid rgba(34,197,94,.4); }
+  .b-bad { background: rgba(239,68,68,.15); color: var(--red); border: 1px solid rgba(239,68,68,.4); }
+  .b-warn { background: rgba(234,179,8,.15); color: var(--yellow); border: 1px solid rgba(234,179,8,.4); }
+
+  .arch { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0; }
+  .node { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; flex: 1 1 200px; min-width: 190px; }
+  .node .role { font-size: .7rem; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+  .node .algo { font-size: 1rem; font-weight: 600; margin-top: 2px; }
+  .arrow { align-self: center; color: var(--muted); font-size: 1.4rem; }
+
+  .bar-row { display: grid; grid-template-columns: 110px 1fr 90px; align-items: center; gap: 10px; margin: 6px 0; font-size: .85rem; }
+  .bar-track { background: var(--card2); height: 18px; border-radius: 9px; overflow: hidden; }
+  .bar { height: 100%; border-radius: 9px; }
+  .bar-val { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  .flow { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin: 12px 0; font-family: "Cascadia Mono", Consolas, monospace; font-size: .82rem; }
+  .flow .step { margin: 4px 0; }
+  .flow .peer { color: var(--purple); }
+  .flow .msg { color: var(--muted); }
+  .flow .mark { color: var(--green); font-weight: 700; }
+
+  pre.log { background: #0b1220; border: 1px solid var(--border); border-radius: 10px; padding: 14px; overflow-x: auto; font-size: .8rem; color: #cbd5e1; }
+  pre.log .hl { color: var(--green); font-weight: 700; }
+  pre.log .hlr { color: var(--red); font-weight: 700; }
+
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; }
+  .panel { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+
+  .migration-map { width: 100%; }
+  .mm-layer { display: grid; grid-template-columns: 130px 1fr 1fr 130px; gap: 6px; align-items: center; margin: 6px 0; font-size: .85rem; }
+  .mm-layer .lname { color: var(--muted); font-size: .78rem; }
+  .mm-box { background: var(--card2); border-radius: 8px; padding: 6px 10px; text-align: center; border: 1px solid var(--border); }
+  .mm-box.pqc { border-color: rgba(167,139,250,.5); }
+  .mm-status { text-align: center; font-weight: 600; font-size: .82rem; border-radius: 8px; padding: 6px; }
+
+  .kpi { display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0; }
+  .kpi-item { background: var(--card2); border-radius: 8px; padding: 8px 14px; font-size: .8rem; }
+  .kpi-item b { display: block; font-size: 1.1rem; }
+
+  .code-block { background: #0b1220; border: 1px solid var(--border); border-radius: 10px; margin: 10px 0 20px; overflow: hidden; }
+  .code-block .code-title { background: var(--card2); padding: 6px 14px; font-size: .78rem; color: var(--muted); border-bottom: 1px solid var(--border); font-family: "Cascadia Mono", Consolas, monospace; }
+  .code-block pre { padding: 14px; overflow-x: auto; font-size: .8rem; line-height: 1.55; color: #cbd5e1; font-family: "Cascadia Mono", Consolas, monospace; }
+  .cb-remove { color: var(--red); } .cb-add { color: var(--green); } .cb-com { color: #64748b; } .cb-key { color: var(--blue); } .cb-str { color: var(--orange); }
+
+  footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--border); color: var(--muted); font-size: .8rem; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>JSSE 后量子（PQC）迁移测试报告</h1>
+<div class="subtitle">javax.net.ssl.SSLSocket 全链路 TLS 握手 · 三路线实测验证 · 2026-09</div>
+
+<!-- ===== 总览卡片 ===== -->
+<div class="cards">
+  <div class="card"><div class="num green">3</div><div class="lbl">测试路线 (BC BCTLS / JDK 原生 / 自实现)</div></div>
+  <div class="card"><div class="num blue">8</div><div class="lbl">迁移断点 (含新增 signature_algorithms 断点)</div></div>
+  <div class="card"><div class="num purple">6</div><div class="lbl">PQC 原语参数集 (ML-KEM×3 + ML-DSA×3)</div></div>
+  <div class="card"><div class="num red">1</div><div class="lbl">关键失败实证 (ML-DSA 证书 JSSE 握手)</div></div>
+  <div class="card"><div class="num yellow">7</div><div class="lbl">自实现组件清单</div></div>
+</div>
+
+<!-- ===== 1. 测试环境 ===== -->
+<h2>1. 测试环境</h2>
+<div class="grid2">
+  <div class="panel">
+    <table>
+      <tr><th>项目</th><th>规格</th></tr>
+      <tr><td>操作系统</td><td>Windows x86-64</td></tr>
+      <tr><td>JDK</td><td><b>JDK 27</b> (build 27+35-2325)</td></tr>
+      <tr><td>JSSE Provider</td><td>SunJSSE v27 / BCJSSE v1.0025</td></tr>
+      <tr><td>PQC 能力</td><td>JEP 496 (ML-KEM), JEP 497 (ML-DSA), X25519MLKEM768</td></tr>
+    </table>
+  </div>
+  <div class="panel">
+    <table>
+      <tr><th>Bouncy Castle</th><th>版本</th></tr>
+      <tr><td>bcprov-jdk18on</td><td>1.86</td></tr>
+      <tr><td>bcpkix-jdk18on</td><td>1.86</td></tr>
+      <tr><td>bctls-jdk18on</td><td>1.86.1</td></tr>
+      <tr><td>bcutil-jdk18on</td><td>1.86</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- ===== 2. 三种路线架构 ===== -->
+<h2>2. 三种测试路线</h2>
+<div class="arch">
+  <div class="node"><div class="role">路线 A · Provider</div><div class="algo">BC BCTLS 1.86.1</div><div class="role">X25519MLKEM768 混合组</div></div>
+  <div class="arrow">→</div>
+  <div class="node"><div class="role">路线 B · 原生</div><div class="algo">JDK 27 SunJSSE</div><div class="role">X25519MLKEM768 混合组</div></div>
+  <div class="arrow">→</div>
+  <div class="node"><div class="role">路线 C · 自实现</div><div class="algo">自写 TLS 1.3 协议栈</div><div class="role">X25519 + ML-DSA-65 签名</div></div>
+</div>
+
+<div class="flow">
+  <div class="step"><span class="peer">Client</span> <span class="msg">── ClientHello (supported_groups: [X25519MLKEM768]) ──▶</span> <span class="peer">Server</span></div>
+  <div class="step"><span class="peer">Server</span> <span class="msg">◀── ServerHello (key_share: X25519MLKEM768) ──</span> <span class="peer">Client</span></div>
+  <div class="step"><span class="peer">Server</span> <span class="msg">◀── Certificate + CertificateVerify + Finished ──</span> <span class="peer">Client</span></div>
+  <div class="step" style="color:var(--muted)">混合密钥交换: X25519 ECDH (经典) + ML-KEM-768 (后量子) = 联合共享密钥，安全性 ≥ max(经典, 后量子)</div>
+</div>
+
+<!-- ===== 3. 握手结果对比 ===== -->
+<h2>3. 三路线握手结果对比</h2>
+<table>
+  <tr><th>指标</th><th>路线 A (BC BCTLS)</th><th>路线 B (JDK 27 原生)</th><th>路线 C (自实现)</th></tr>
+  <tr><td>TLS 协议</td><td class="ok">TLSv1.3</td><td class="ok">TLSv1.3</td><td class="ok">TLS 1.3 (自定义)</td></tr>
+  <tr><td>密码套件</td><td>TLS_CHACHA20_POLY1305_SHA256</td><td>TLS_AES_256_GCM_SHA384</td><td>AES-128-GCM</td></tr>
+  <tr><td>密钥交换</td><td class="ok">X25519MLKEM768 (PQC混合)</td><td class="ok">X25519MLKEM768 (PQC混合)</td><td>X25519 (经典)</td></tr>
+  <tr><td>证书签名</td><td class="bad">SHA256withECDSA (经典)</td><td class="bad">SHA256withECDSA (经典)</td><td class="ok"><b>ML-DSA-65 (PQC)</b></td></tr>
+  <tr><td>消息加密交换</td><td class="ok">✅ 通过</td><td class="ok">✅ 通过</td><td class="ok">✅ 双向通过</td></tr>
+  <tr><td>PQC 证书签名链路</td><td class="bad">❌</td><td class="bad">❌</td><td class="ok">✅</td></tr>
+</table>
+
+<!-- ===== 3.5 具体改造代码 ===== -->
+<h2>3.5 通过 BC 支持 PQC 的具体改造代码</h2>
+<p style="font-size:.9rem;color:var(--muted)">改造点集中在「接入层」和「密码学配置」，<b>业务代码零侵入</b>。以下为实测改造前后对比（JDK 21 / JDK 27 通用，已验证可运行）。</p>
+
+<h3>① 注册 BC Provider</h3>
+<div class="code-block">
+  <div class="code-title">改造前 → 改造后</div>
+<pre><span class="cb-com">// 改造前: 无任何额外 Provider</span>
+<span class="cb-key">import</span> javax.net.ssl.*;
+
+<span class="cb-com">// 改造后: 注册 BC 原语 Provider + BC JSSE Provider</span>
+<span class="cb-key">import</span> java.security.*;
+<span class="cb-key">import</span> org.bouncycastle.jce.provider.BouncyCastleProvider;
+<span class="cb-key">import</span> org.bouncycastle.jsse.provider.BouncyCastleJsseProvider;
+
+Security.<span class="cb-add">addProvider</span>(<span class="cb-key">new</span> BouncyCastleProvider());      <span class="cb-com">// PQC 原语 (ML-KEM/ML-DSA)</span>
+Security.<span class="cb-add">addProvider</span>(<span class="cb-key">new</span> BouncyCastleJsseProvider());  <span class="cb-com">// JSSE (TLS)</span></pre>
+</div>
+
+<h3>② 获取 SSLContext 时指定 BCJSSE Provider</h3>
+<div class="code-block">
+  <div class="code-title">改造前 → 改造后</div>
+<pre><span class="cb-com">// 改造前</span>
+SSLContext ctx = SSLContext.<span class="cb-remove">getInstance("TLSv1.3")</span>;
+
+<span class="cb-com">// 改造后</span>
+SSLContext ctx = SSLContext.<span class="cb-add">getInstance("TLSv1.3", "BCJSSE")</span>;
+ctx.init(kmf.getKeyManagers(), tmf.getTrustManagers(), <span class="cb-key">new</span> SecureRandom());</pre>
+</div>
+
+<h3>③ KeyManager / TrustManager / KeyStore 指定 BC Provider</h3>
+<div class="code-block">
+  <div class="code-title">改造后（需指定 Provider，否则 PQC 密钥无法加载）</div>
+<pre>KeyStore ks = KeyStore.<span class="cb-add">getInstance("PKCS12", "BC")</span>;
+ks.load(<span class="cb-key">null</span>, <span class="cb-key">null</span>);
+ks.setKeyEntry(<span class="cb-str">"server"</span>, privKey, password, certs);
+
+KeyManagerFactory kmf = KeyManagerFactory.<span class="cb-add">getInstance("PKIX", "BCJSSE")</span>;
+kmf.init(ks, password);
+TrustManagerFactory tmf = TrustManagerFactory.<span class="cb-add">getInstance("PKIX", "BCJSSE")</span>;
+tmf.init(trustStore);</pre>
+</div>
+
+<h3>④ 启用 PQC 密钥交换组（新增配置，经典代码无此调用）</h3>
+<div class="code-block">
+  <div class="code-title">新增</div>
+<pre><span class="cb-com">// 服务端 (SSLServerSocket)</span>
+SSLParameters params = srv.getSSLParameters();
+params.setProtocols(<span class="cb-key">new</span> String[]{<span class="cb-str">"TLSv1.3"</span>});
+params.<span class="cb-add">setNamedGroups</span>(<span class="cb-key">new</span> String[]{<span class="cb-str">"X25519MLKEM768"</span>, <span class="cb-str">"X25519"</span>});
+srv.setSSLParameters(params);
+
+<span class="cb-com">// 客户端 (SSLSocket)</span>
+SSLParameters params = sock.getSSLParameters();
+params.setProtocols(<span class="cb-key">new</span> String[]{<span class="cb-str">"TLSv1.3"</span>});
+params.<span class="cb-add">setNamedGroups</span>(<span class="cb-key">new</span> String[]{<span class="cb-str">"X25519MLKEM768"</span>});
+sock.setSSLParameters(params);</pre>
+</div>
+
+<h3>⑤ 证书生成改用 BC（若需要 PQC 签名证书）</h3>
+<div class="code-block">
+  <div class="code-title">改造后（自签名 X.509）</div>
+<pre>JcaX509v3CertificateBuilder cb = <span class="cb-key">new</span> JcaX509v3CertificateBuilder(
+    subject, serial, notBefore, notAfter, subject, kp.getPublic());
+X509Certificate cert = <span class="cb-key">new</span> JcaX509CertificateConverter().setProvider(<span class="cb-str">"BC"</span>)
+    .getCertificate(cb.build(<span class="cb-key">new</span> JcaContentSignerBuilder(<span class="cb-str">"SHA256withECDSA"</span>)
+        .setProvider(<span class="cb-str">"BC"</span>).build(kp.getPrivate())));</pre>
+</div>
+
+<h3>改造影响面小结</h3>
+<table>
+  <tr><th>层次</th><th>改造内容</th><th>侵入度</th><th>业务代码影响</th></tr>
+  <tr><td>接入层</td><td>注册 BC Provider + <code>getInstance(x, "BCJSSE")</code></td><td>低</td><td>无</td></tr>
+  <tr><td>密钥库层</td><td>KMF/TMF/KeyStore 指定 BC Provider</td><td>中</td><td>无</td></tr>
+  <tr><td>安全参数</td><td><code>setNamedGroups(PQC组)</code> <b>新增</b></td><td>中</td><td>无</td></tr>
+  <tr><td>证书生成</td><td>BC 证书构建器</td><td>中-高</td><td>无</td></tr>
+  <tr><td>业务代码</td><td>—</td><td>—</td><td class="ok">零侵入</td></tr>
+</table>
+<p style="font-size:.85rem;color:var(--muted)">完整源码见 <code>BCPqcTlsServer.java</code> / <code>BCPqcTlsClient.java</code>（D:\PQC-test\JSSE-java\）。JDK 21 上无需改动即可运行（BC 自含 PQC 实现），JDK 24+ 的 <code>javax.crypto.KEM</code>/<code>NamedParameterSpec</code> 为可选原生替代。</p>
+
+<!-- ===== 4. 原语性能 ===== -->
+<h2>4. ML-KEM / ML-DSA 原语性能 (JDK 27 原生)</h2>
+<div class="grid2">
+  <div class="panel">
+    <h3>ML-KEM (FIPS 203) — 密钥封装</h3>
+    <table>
+      <tr><th>参数集</th><th>公钥</th><th>密文</th><th>KeyGen</th><th>Encaps</th><th>Decaps</th></tr>
+      <tr><td>ML-KEM-512</td><td>822 B</td><td>768 B</td><td>1.6ms</td><td>1.5ms</td><td>1.2ms</td></tr>
+      <tr><td>ML-KEM-768</td><td>1206 B</td><td>1088 B</td><td>1.6ms</td><td>1.5ms</td><td>1.2ms</td></tr>
+      <tr><td>ML-KEM-1024</td><td>1590 B</td><td>1568 B</td><td>1.2ms</td><td>1.4ms</td><td>1.6ms</td></tr>
+    </table>
+    <h3>公钥大小对比 (KB)</h3>
+    <div class="bar-row"><span>ML-KEM-512</span><div class="bar-track"><div class="bar" style="width:29%;background:var(--blue)"></div></div><span class="bar-val">0.80 KB</span></div>
+    <div class="bar-row"><span>ML-KEM-768</span><div class="bar-track"><div class="bar" style="width:43%;background:var(--blue)"></div></div><span class="bar-val">1.18 KB</span></div>
+    <div class="bar-row"><span>ML-KEM-1024</span><div class="bar-track"><div class="bar" style="width:57%;background:var(--blue)"></div></div><span class="bar-val">1.55 KB</span></div>
+    <div class="bar-row"><span>ECDSA P-256</span><div class="bar-track"><div class="bar" style="width:2.7%;background:var(--muted)"></div></div><span class="bar-val">0.07 KB</span></div>
+  </div>
+  <div class="panel">
+    <h3>ML-DSA (FIPS 204) — 数字签名</h3>
+    <table>
+      <tr><th>参数集</th><th>公钥</th><th>签名</th><th>KeyGen</th><th>Sign</th><th>Verify</th></tr>
+      <tr><td>ML-DSA-44</td><td>1334 B</td><td>2420 B</td><td>4.3ms</td><td>5.8ms</td><td>1.5ms</td></tr>
+      <tr><td>ML-DSA-65</td><td>1974 B</td><td>3309 B</td><td>1.9ms</td><td>3.4ms</td><td>1.4ms</td></tr>
+      <tr><td>ML-DSA-87</td><td>2614 B</td><td>4627 B</td><td>1.2ms</td><td>2.1ms</td><td>1.1ms</td></tr>
+    </table>
+    <h3>签名大小对比 (KB)</h3>
+    <div class="bar-row"><span>ML-DSA-44</span><div class="bar-track"><div class="bar" style="width:52%;background:var(--purple)"></div></div><span class="bar-val">2.36 KB</span></div>
+    <div class="bar-row"><span>ML-DSA-65</span><div class="bar-track"><div class="bar" style="width:71%;background:var(--purple)"></div></div><span class="bar-val">3.23 KB</span></div>
+    <div class="bar-row"><span>ML-DSA-87</span><div class="bar-track"><div class="bar" style="width:100%;background:var(--purple)"></div></div><span class="bar-val">4.52 KB</span></div>
+    <div class="bar-row"><span>ECDSA P-256</span><div class="bar-track"><div class="bar" style="width:1.5%;background:var(--muted)"></div></div><span class="bar-val">0.07 KB</span></div>
+  </div>
+</div>
+
+<!-- ===== 5. 迁移断点 ===== -->
+<h2>5. 迁移断点分析 (8 项)</h2>
+<table>
+  <tr><th>#</th><th>断点</th><th>现状</th><th>是否可自实现</th><th>解除条件</th></tr>
+  <tr><td>1</td><td><b>证书签名仍为经典 ECDSA</b></td><td>ML-DSA 证书未接入 JSSE</td><td><span class="badge b-warn">部分可</span></td><td>IETF LAMPS 标准</td></tr>
+  <tr><td>2</td><td>NamedGroup 协商结果不可查询</td><td>getNamedGroups() 返回配置值</td><td><span class="badge b-ok">已规避</span></td><td>JSSE 增加查询 API</td></tr>
+  <tr><td>3</td><td>纯 JDK 无 X.509 Builder</td><td>用 keytool 变通</td><td><span class="badge b-ok">已规避</span></td><td>JDK 提供 Builder</td></tr>
+  <tr><td>4</td><td>自签名证书不受信任</td><td>trust-all TrustManager</td><td><span class="badge b-ok">已规避</span></td><td>生产用 PKI</td></tr>
+  <tr><td>5</td><td>BC getNamedGroups() 返回 null</td><td>硬编码候选探测</td><td><span class="badge b-ok">已规避</span></td><td>BC 实现查询 API</td></tr>
+  <tr><td>6</td><td>JDK 24-26 无 TLS PQC 组</td><td>仅原语 API</td><td><span class="badge b-warn">依赖 BC</span></td><td>升级 JDK 27+</td></tr>
+  <tr><td>7</td><td>证书链验证标准未定</td><td>PKIX + RFC5280</td><td><span class="badge b-bad">否</span></td><td>LAMPS 证书链标准</td></tr>
+  <tr><td>8</td><td><b>signature_algorithms 硬编码</b></td><td>JSSE 无 PQC 签名方案</td><td><span class="badge b-warn">可(自实现协议)</span></td><td>JSSE 纳入 ML-DSA</td></tr>
+</table>
+
+<!-- ===== 6. 关键失败实证 ===== -->
+<h2>6. 关键实证：ML-DSA 证书无法通过 JSSE 完成 TLS 握手</h2>
+<div class="grid2">
+  <div class="panel">
+    <h3>三步递进测试</h3>
+    <table>
+      <tr><th>步骤</th><th>内容</th><th>结果</th></tr>
+      <tr><td>①</td><td>keytool 生成 ML-DSA 证书</td><td class="ok">✅ OK</td></tr>
+      <tr><td>②</td><td>SSLContext 加载 ML-DSA 证书</td><td class="ok">✅ OK</td></tr>
+      <tr><td>③</td><td><b>实际 TLS 1.3 握手</b></td><td class="bad">❌ FAIL</td></tr>
+    </table>
+  </div>
+  <div class="panel">
+    <h3>根因</h3>
+    <p style="font-size:.9rem">SunJSSE 的 <code>signature_algorithms</code> 扩展列表仅 <b>18 个经典方案</b>，<b>不含任何 PQC 签名</b>：</p>
+    <pre class="log" style="font-size:.75rem">ecdsa_secp256r1_sha256 · ecdsa_secp384r1_sha384 · ecdsa_secp521r1_sha512
+ed25519 · ed448
+rsa_pss_rsae_sha256/384/512 · rsa_pss_pss_sha256/384/512
+rsa_pkcs1_sha256/384/512 · dsa_sha256 · sha1(3种) 
+<span class="hlr">※ 无 ML-DSA / Dilithium / SLH-DSA / Falcon</span></pre>
+  </div>
+</div>
+<pre class="log">[CLIENT] 握手失败: SSLHandshakeException
+         <span class="hlr">(handshake_failure) No available authentication scheme</span>
+根因: javax.net.ssl.SSLHandshakeException: (handshake_failure) No available authentication scheme</pre>
+
+<!-- ===== 7. 自实现成功 ===== -->
+<h2>7. 自实现 TLS 1.3 后量子签名 — 成功验证</h2>
+<p style="font-size:.92rem;color:var(--muted)">绕开 JSSE，自实现最小 TLS 1.3 协议栈 (<code>SelfImplementedPqcTls.java</code>, 440 行)，将 ML-DSA-65 签名嵌入 CertificateVerify 消息。</p>
+
+<div class="flow">
+  <div class="step"><span class="peer">Client</span> <span class="msg">── ClientHello (X25519 pub) ──▶</span> <span class="peer">Server</span></div>
+  <div class="step"><span class="peer">Server</span> <span class="msg">◀── ServerHello (X25519 pub) ──</span> <span class="peer">Client</span></div>
+  <div class="step"><span class="peer">Server</span> <span class="msg">◀── Certificate (ML-DSA-65, 5525B) ──</span> <span class="peer">Client</span></div>
+  <div class="step"><span class="peer">Server</span> <span class="msg">◀── CertificateVerify (ML-DSA sig, 3309B) ──</span> <span class="peer">Client</span></div>
+  <div class="step"><span class="peer">Client</span> <span class="mark">ML-DSA-65 签名验证: OK ✓</span></div>
+  <div class="step"><span class="peer">Server</span> <span class="msg">── Server Finished ──▶</span> <span class="peer">Client</span> <span class="mark">验证 OK</span></div>
+  <div class="step"><span class="peer">Client</span> <span class="msg">── Client Finished ──▶</span> <span class="peer">Server</span> <span class="mark">验证 OK</span></div>
+  <div class="step"><span class="peer">双向</span> <span class="msg">── AES-128-GCM 加密数据 ──</span> <span class="mark">解密成功</span></div>
+</div>
+
+<pre class="log">[CLIENT] ML-DSA-65 签名验证: <span class="hl">OK ✓</span>
+[CLIENT] Server Finished 验证: <span class="hl">OK</span>
+[SERVER] Client Finished 验证: <span class="hl">OK</span>
+[CLIENT] 收到解密数据: "OK from self-implemented PQC TLS!"
+[SERVER] 收到解密数据: "Hello from self-implemented PQC client!"
+[CLIENT] === 自实现 PQC TLS 握手成功 ===
+[SERVER] === 自实现 PQC TLS 握手成功 ===</pre>
+
+<div class="kpi">
+  <div class="kpi-item"><b>440</b>行自实现代码</div>
+  <div class="kpi-item"><b>5</b>个自实现 TLS 组件</div>
+  <div class="kpi-item"><b>100%</b>验证点通过</div>
+  <div class="kpi-item"><b>3309</b>B ML-DSA-65 签名</div>
+</div>
+
+<!-- ===== 8. 迁移全景图 ===== -->
+<h2>8. TLS 1.3 全链路 PQC 迁移状态图</h2>
+<div class="migration-map">
+  <div class="mm-layer">
+    <div class="lname">密钥交换</div>
+    <div class="mm-box">经典: ECDHE(X25519)</div>
+    <div class="mm-box pqc">PQC: ML-KEM-768</div>
+    <div class="mm-status" style="background:rgba(34,197,94,.15);color:var(--green)">✅ 原生支持</div>
+  </div>
+  <div class="mm-layer">
+    <div class="lname">证书签名</div>
+    <div class="mm-box">经典: ECDSA(P-256)</div>
+    <div class="mm-box pqc">PQC: ML-DSA-65</div>
+    <div class="mm-status" style="background:rgba(234,179,8,.15);color:var(--yellow)">⚠️ 仅自实现</div>
+  </div>
+  <div class="mm-layer">
+    <div class="lname">证书链验证</div>
+    <div class="mm-box">经典: PKIX+RFC5280</div>
+    <div class="mm-box pqc">PQC: 同左</div>
+    <div class="mm-status" style="background:rgba(148,163,184,.15);color:var(--muted)">⏳ 标准未定</div>
+  </div>
+  <div class="mm-layer">
+    <div class="lname">对称加密</div>
+    <div class="mm-box">经典: AES-GCM</div>
+    <div class="mm-box pqc">PQC: 同左</div>
+    <div class="mm-status" style="background:rgba(34,197,94,.15);color:var(--green)">✅ 无需迁移</div>
+  </div>
+</div>
+
+<!-- ===== 9. 自实现清单 ===== -->
+<h2>9. 自实现组件清单</h2>
+<table>
+  <tr><th>组件</th><th>文件位置</th><th>原因</th><th>性质</th></tr>
+  <tr><td>discoverPqcGroup 探测</td><td>BCPqcTlsServer:155, Client:105</td><td>BC getNamedGroups()=null</td><td><span class="badge b-warn">测试框架</span></td></tr>
+  <tr><td>trust-all TrustManager</td><td>两 Client:69-97</td><td>自签名证书不受信任</td><td><span class="badge b-warn">测试框架</span></td></tr>
+  <tr><td>握手信息聚合打印</td><td>各 Server/Client</td><td>无聚合 API</td><td><span class="badge b-warn">测试框架</span></td></tr>
+  <tr><td>性能计时统计</td><td>JdkPqcPrimitives:35-96</td><td>无 profiling API</td><td><span class="badge b-warn">测试框架</span></td></tr>
+  <tr><td>keytool 预生成证书</td><td>run_jdk_demo.bat / run_selfimpl</td><td>纯 JDK 无 X.509 Builder</td><td><span class="badge b-warn">变通方案</span></td></tr>
+  <tr><td>编译运行脚本</td><td>run_*.bat × 3</td><td>无 Maven 环境</td><td><span class="badge b-warn">工程化</span></td></tr>
+  <tr><td><b>自实现 TLS 1.3 协议栈</b></td><td>SelfImplementedPqcTls.java</td><td>JSSE 无 PQC 签名方案</td><td><span class="badge b-ok">研究验证</span></td></tr>
+</table>
+
+<!-- ===== 10. 结论 ===== -->
+<h2>10. 结论与建议</h2>
+<div class="grid2">
+  <div class="panel">
+    <h3>核心结论</h3>
+    <ul style="font-size:.9rem;padding-left:18px">
+      <li style="margin:6px 0"><b class="green">密钥交换已可迁移</b> — JDK 27 / BC BCTLS 原生支持 X25519MLKEM768</li>
+      <li style="margin:6px 0"><b class="yellow">后量子签名"算法可用、协议不可用"</b> — ML-DSA 原语可用，但 JSSE signature_algorithms 硬编码</li>
+      <li style="margin:6px 0"><b class="purple">自实现可打通签名链路</b> — 绕开 JSSE 验证成功，断点在集成层而非算法</li>
+      <li style="margin:6px 0"><b class="red">生产环境仍建议等待标准</b> — 自实现不兼容标准 TLS 客户端</li>
+    </ul>
+  </div>
+  <div class="panel">
+    <h3>建议迁移策略</h3>
+    <table>
+      <tr><th>阶段</th><th>时间</th><th>动作</th></tr>
+      <tr><td>当前</td><td>2026</td><td>升级 JDK 27+，启用 X25519MLKEM768</td></tr>
+      <tr><td>近期</td><td>2027-28</td><td>跟踪 IETF LAMPS 标准</td></tr>
+      <tr><td>中期</td><td>2029-30</td><td>JSSE 支持后使用混合双证书</td></tr>
+      <tr><td>远期</td><td>2033+</td><td>CNSA 2.0 完全过渡纯 PQC</td></tr>
+    </table>
+  </div>
+</div>
+
+<footer>
+  报告生成于 2026-09 · 基于 JDK 27 + Bouncy Castle 1.86 实测 · 源码与脚本位于 D:\PQC-test\JSSE-java\
+</footer>
+
+</div>
+</body>
+</html>
