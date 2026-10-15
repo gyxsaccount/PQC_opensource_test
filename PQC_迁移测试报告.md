@@ -11,7 +11,7 @@
 7. [自实现部分清单](#7-自实现部分清单)
 8. [结论与建议](#8-结论与建议)
 
-> **本版更新**：补充 ML-DSA 证书 TLS 握手失败实证（§4.5）、自实现 TLS 1.3 后量子签名方案（§4.6）及其迁移断点分析（§6.8）、自实现清单（§7.7）、**BC 接入改造代码（§4.7）**。
+> **本版更新**：补充 ML-DSA 证书 TLS 握手失败实证（§4.5）、自实现 TLS 1.3 后量子签名方案（§4.6）及其迁移断点分析（§6.8）、自实现清单（§7.7）、**BC 接入改造代码（§4.7）**、**三方案握手代码改造点（§4.8）**。
 
 ---
 
@@ -437,6 +437,106 @@ X509Certificate cert = new JcaX509CertificateConverter().setProvider("BC")
 | 业务代码 | — | — | **零侵入** |
 
 > 完整源码见 `BCPqcTlsServer.java` / `BCPqcTlsClient.java`。JDK 21 上无需改动即可运行（BC 自含 PQC 实现），JDK 24+ 的 `javax.crypto.KEM`/`NamedParameterSpec` 为可选原生替代。
+
+---
+
+## 4.8 三方案握手代码改造点（高亮）
+
+> 以下为三方案 `startHandshake()` 前后的**具体改造代码**，与完整源码逐行对应。
+
+### 路线 A：BC BCTLS 握手改造
+
+```java
+// ① 注册 BC Provider（改造前: 无）
+Security.addProvider(new BouncyCastleProvider());      // PQC 原语 (ML-KEM/ML-DSA)
+Security.addProvider(new BouncyCastleJsseProvider());  // JSSE (TLS)
+
+// ② SSLContext 用 BCJSSE 获取（改造前: getInstance("TLSv1.3")）
+SSLContext ctx = SSLContext.getInstance("TLSv1.3", "BCJSSE");
+ctx.init(kmf.getKeyManagers(), tmf.getTrustManagers(), new SecureRandom());
+
+// ③ KMF / TMF / KeyStore 指定 BC Provider（改造前: 默认 Sun 实现）
+KeyStore ks = KeyStore.getInstance("PKCS12", "BC");
+KeyManagerFactory kmf = KeyManagerFactory.getInstance("PKIX", "BCJSSE");
+TrustManagerFactory tmf = TrustManagerFactory.getInstance("PKIX", "BCJSSE");
+
+// ④ 握手前配置 PQC 混合组（新增调用）
+SSLParameters params = srv.getSSLParameters();
+params.setProtocols(new String[]{"TLSv1.3"});
+params.setNamedGroups(new String[]{pqcGroup, "X25519", "secp256r1"});   // ← PQC 核心
+srv.setSSLParameters(params);
+
+// ⑤ 握手调用不变（startHandshake / getSession 零改动）
+sock.startHandshake();
+SSLSession session = sock.getSession();
+```
+
+### 路线 B：JDK 27 原生握手改造
+
+```java
+// ① SSLContext 用默认 SunJSSE（无需 Provider 改造）
+SSLContext ctx = SSLContext.getInstance("TLSv1.3");
+ctx.init(kmf.getKeyManagers(), null, new SecureRandom());
+
+// ② 服务端握手前配置 PQC 混合组（改造前: 默认无 PQC 组）
+SSLParameters params = srv.getSSLParameters();
+params.setProtocols(new String[]{"TLSv1.3"});
+params.setNamedGroups(new String[]{"X25519MLKEM768", "X25519"});         // ← PQC 核心
+srv.setSSLParameters(params);
+
+// ③ 客户端握手前配置同一组（改造前: 无）
+SSLParameters sslParams = sock.getSSLParameters();
+sslParams.setProtocols(new String[]{"TLSv1.3"});
+sslParams.setNamedGroups(new String[]{"X25519MLKEM768"});                // ← PQC 核心
+sock.setSSLParameters(sslParams);
+
+// ④ 证书用 keytool 预生成（keyalg EC / ML-DSA），KMF 用 SunX509
+KeyManagerFactory kmf = KeyManagerFactory.getInstance("SunX509");
+
+// ⑤ 握手调用不变（startHandshake / getSession 零改动）
+sock.startHandshake();
+SSLSession session = sock.getSession();
+```
+
+### 路线 C：自实现 TLS 1.3 握手改造
+
+```java
+// ① 加载 ML-DSA-65 证书与私钥（keytool 预生成）
+KeyStore ks = KeyStore.getInstance("PKCS12");
+PrivateKey mldsaPrivKey = (PrivateKey) ks.getKey(alias, PASSWORD);
+X509Certificate mldsaCert = (X509Certificate) ks.getCertificate(alias);
+
+// ② 握手消息: ClientHello → ServerHello (X25519 密钥交换)
+byte[] sharedSecret = agreeX25519(serverXKp.getPrivate(), clientPubBytes);
+
+// ③ CertificateVerify: ML-DSA 签名（JSSE 不支持 → 自实现核心改造）
+Signature sig = Signature.getInstance("ML-DSA");                        // ← PQC 签名
+sig.initSign(privKey);
+sig.update(sigContent);
+byte[] signature = sig.sign();
+sendMsg(out, T_CERTIFICATE_VERIFY, signature);
+
+// ④ 客户端验签（新增）
+Signature verifier = Signature.getInstance("ML-DSA");
+verifier.initVerify(serverCert.getPublicKey());
+verifier.update(sigContent);
+boolean sigValid = verifier.verify(signature);
+
+// ⑤ Finished: TLS 1.3 HKDF 派生 + 应用数据 AES-128-GCM（自实现）
+byte[] svVerifyData = hmacSha256(ks.deriveServerFinishedKey(), transHash);
+byte[] ct = aesGcmEncrypt(ks.deriveServerAppKey(), ks.deriveServerAppIv(), plain, aad);
+```
+
+### 三方案握手改造点对照表
+
+| 改造点 | 路线 A (BC BCTLS) | 路线 B (JDK 原生) | 路线 C (自实现) |
+|--------|------------------|------------------|----------------|
+| Provider 注册 | 需注册 BC + BCJSSE | 无需 | 无需 |
+| SSLContext 获取 | `getInstance("TLSv1.3","BCJSSE")` | 默认 SunJSSE | 不适用（协议自实现） |
+| 密钥交换 PQC 组 | `setNamedGroups(X25519MLKEM768)` | `setNamedGroups(X25519MLKEM768)` | X25519（无 PQC KEX） |
+| 证书签名 | SHA256withECDSA（经典） | SHA256withECDSA（经典） | **ML-DSA-65（PQC）** |
+| 证书加载 | BC KeyStore/KMF/TMF | keytool + SunX509 | keytool ML-DSA p12 |
+| 握手调用 | startHandshake() / getSession() 零改动 | 同左 | 自定义报文循环 |
 
 ---
 

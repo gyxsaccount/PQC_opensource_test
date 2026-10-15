@@ -231,6 +231,104 @@ X509Certificate cert = <span class="cb-key">new</span> JcaX509CertificateConvert
 </table>
 <p style="font-size:.85rem;color:var(--muted)">完整源码见 <code>BCPqcTlsServer.java</code> / <code>BCPqcTlsClient.java</code>（D:\PQC-test\JSSE-java\）。JDK 21 上无需改动即可运行（BC 自含 PQC 实现），JDK 24+ 的 <code>javax.crypto.KEM</code>/<code>NamedParameterSpec</code> 为可选原生替代。</p>
 
+<!-- ===== 3.6 三方案握手代码改造点 ===== -->
+<h2>3.6 三方案握手代码改造点（高亮）</h2>
+<p style="font-size:.9rem;color:var(--muted)">以下为三方案<code>startHandshake()</code>前后的<b>具体改造代码</b>。绿色 = 新增/替换，红色 = 移除。</p>
+
+<h3>路线 A：BC BCTLS 握手改造</h3>
+<div class="code-block">
+  <div class="code-title">BCPqcTlsServer / BCPqcTlsClient — 握手相关改造点</div>
+<pre><span class="cb-com">// ① 注册 BC Provider（改造前: 无）</span>
+Security.<span class="cb-add">addProvider</span>(<span class="cb-key">new</span> BouncyCastleProvider());
+Security.<span class="cb-add">addProvider</span>(<span class="cb-key">new</span> BouncyCastleJsseProvider());
+
+<span class="cb-com">// ② SSLContext 用 BCJSSE 获取（改造前: getInstance("TLSv1.3")）</span>
+SSLContext ctx = SSLContext.<span class="cb-add">getInstance("TLSv1.3", "BCJSSE")</span>;
+ctx.init(kmf.getKeyManagers(), tmf.getTrustManagers(), <span class="cb-key">new</span> SecureRandom());
+
+<span class="cb-com">// ③ KMF / TMF / KeyStore 指定 BC Provider（改造前: 默认 Sun 实现）</span>
+KeyStore ks = KeyStore.<span class="cb-add">getInstance("PKCS12", "BC")</span>;
+KeyManagerFactory kmf = KeyManagerFactory.<span class="cb-add">getInstance("PKIX", "BCJSSE")</span>;
+TrustManagerFactory tmf = TrustManagerFactory.<span class="cb-add">getInstance("PKIX", "BCJSSE")</span>;
+
+<span class="cb-com">// ④ 握手前配置 PQC 混合组（新增调用）</span>
+SSLParameters params = srv.getSSLParameters();
+params.setProtocols(<span class="cb-key">new</span> String[]{<span class="cb-str">"TLSv1.3"</span>});
+params.<span class="cb-add">setNamedGroups</span>(<span class="cb-key">new</span> String[]{pqcGroup, <span class="cb-str">"X25519"</span>, <span class="cb-str">"secp256r1"</span>});
+srv.setSSLParameters(params);
+
+<span class="cb-com">// ⑤ 握手调用不变（startHandshake / getSession 零改动）</span>
+sock.startHandshake();
+SSLSession session = sock.getSession();</pre>
+</div>
+
+<h3>路线 B：JDK 27 原生握手改造</h3>
+<div class="code-block">
+  <div class="code-title">JdkPqcTlsServer / JdkPqcTlsClient — 握手相关改造点</div>
+<pre><span class="cb-com">// ① SSLContext 用默认 SunJSSE（无需 Provider 改造）</span>
+SSLContext ctx = SSLContext.<span class="cb-key">getInstance("TLSv1.3")</span>;
+ctx.init(kmf.getKeyManagers(), <span class="cb-key">null</span>, <span class="cb-key">new</span> SecureRandom());
+
+<span class="cb-com">// ② 服务端握手前配置 PQC 混合组（改造前: 默认无 PQC 组）</span>
+SSLParameters params = srv.getSSLParameters();
+params.setProtocols(<span class="cb-key">new</span> String[]{<span class="cb-str">"TLSv1.3"</span>});
+params.<span class="cb-add">setNamedGroups</span>(<span class="cb-key">new</span> String[]{<span class="cb-str">"X25519MLKEM768"</span>, <span class="cb-str">"X25519"</span>});
+srv.setSSLParameters(params);
+
+<span class="cb-com">// ③ 客户端握手前配置同一组（改造前: 无）</span>
+SSLParameters sslParams = sock.getSSLParameters();
+sslParams.setProtocols(<span class="cb-key">new</span> String[]{<span class="cb-str">"TLSv1.3"</span>});
+sslParams.<span class="cb-add">setNamedGroups</span>(<span class="cb-key">new</span> String[]{<span class="cb-str">"X25519MLKEM768"</span>});
+sock.setSSLParameters(sslParams);
+
+<span class="cb-com">// ④ 证书用 keytool 预生成（keyalg EC / ML-DSA），KMF 用 SunX509</span>
+KeyManagerFactory kmf = KeyManagerFactory.<span class="cb-key">getInstance("SunX509")</span>;
+
+<span class="cb-com">// ⑤ 握手调用不变（startHandshake / getSession 零改动）</span>
+sock.startHandshake();
+SSLSession session = sock.getSession();</pre>
+</div>
+
+<h3>路线 C：自实现 TLS 1.3 握手改造</h3>
+<div class="code-block">
+  <div class="code-title">SelfImplementedPqcTls — 握手相关改造点（绕开 JSSE，协议自实现）</div>
+<pre><span class="cb-com">// ① 加载 ML-DSA-65 证书与私钥（keytool 预生成）</span>
+KeyStore ks = KeyStore.<span class="cb-key">getInstance("PKCS12")</span>;
+PrivateKey mldsaPrivKey = (PrivateKey) ks.getKey(alias, PASSWORD);
+X509Certificate mldsaCert = (X509Certificate) ks.getCertificate(alias);
+
+<span class="cb-com">// ② 握手消息: ClientHello → ServerHello (X25519 密钥交换)</span>
+byte[] sharedSecret = <span class="cb-add">agreeX25519</span>(serverXKp.getPrivate(), clientPubBytes);
+
+<span class="cb-com">// ③ CertificateVerify: ML-DSA 签名（JSSE 不支持 → 自实现核心改造）</span>
+Signature sig = Signature.<span class="cb-add">getInstance("ML-DSA")</span>;
+sig.initSign(privKey);
+sig.update(sigContent);
+byte[] signature = sig.sign();
+sendMsg(out, T_CERTIFICATE_VERIFY, signature);
+
+<span class="cb-com">// ④ 客户端验签（新增）</span>
+Signature verifier = Signature.<span class="cb-add">getInstance("ML-DSA")</span>;
+verifier.initVerify(serverCert.getPublicKey());
+verifier.update(sigContent);
+boolean sigValid = verifier.verify(signature);
+
+<span class="cb-com">// ⑤ Finished: TLS 1.3 HKDF 派生 + 应用数据 AES-128-GCM（自实现）</span>
+byte[] svVerifyData = hmacSha256(ks.deriveServerFinishedKey(), transHash);
+byte[] ct = aesGcmEncrypt(ks.deriveServerAppKey(), ks.deriveServerAppIv(), plain, aad);</pre>
+</div>
+
+<h3>三方案握手改造点对照表</h3>
+<table>
+  <tr><th>改造点</th><th>路线 A (BC BCTLS)</th><th>路线 B (JDK 原生)</th><th>路线 C (自实现)</th></tr>
+  <tr><td>Provider 注册</td><td class="bad">需注册 BC + BCJSSE</td><td class="ok">无需</td><td class="ok">无需</td></tr>
+  <tr><td>SSLContext 获取</td><td><code>getInstance("TLSv1.3","BCJSSE")</code></td><td>默认 SunJSSE</td><td>不适用（协议自实现）</td></tr>
+  <tr><td>密钥交换 PQC 组</td><td><code>setNamedGroups(X25519MLKEM768)</code></td><td><code>setNamedGroups(X25519MLKEM768)</code></td><td>X25519（无 PQC KEX）</td></tr>
+  <tr><td>证书签名</td><td class="bad">SHA256withECDSA（经典）</td><td class="bad">SHA256withECDSA（经典）</td><td class="ok"><b>ML-DSA-65（PQC）</b></td></tr>
+  <tr><td>证书加载</td><td>BC KeyStore/KMF/TMF</td><td>keytool + SunX509</td><td>keytool ML-DSA p12</td></tr>
+  <tr><td>握手调用</td><td colspan="3">startHandshake() / getSession() 均零改动（路线 C 为自定义报文循环）</td></tr>
+</table>
+
 <!-- ===== 4. 原语性能 ===== -->
 <h2>4. ML-KEM / ML-DSA 原语性能 (JDK 27 原生)</h2>
 <div class="grid2">
