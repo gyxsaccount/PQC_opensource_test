@@ -1,0 +1,40 @@
+{
+  "scope": "post-quantum-target",
+  "note": "目标: 后量子迁移完成后, 客户端(升级后 libssh2/OpenSSH)应支持的算法集合。混合算法同时保留经典分量以保证向后兼容。",
+  "kex": [
+    "mlkem768x25519-sha256",
+    "sntrup761x25519-sha512@openssh.com",
+    "curve25519-sha256",
+    "curve25519-sha256@libssh.org",
+    "ecdh-sha2-nistp256",
+    "ecdh-sha2-nistp384",
+    "ecdh-sha2-nistp521",
+    "diffie-hellman-group16-sha512",
+    "diffie-hellman-group18-sha512",
+    "diffie-hellman-group-exchange-sha256",
+    "diffie-hellman-group14-sha256"
+  ],
+  "hostkey": [
+    "ssh-ed25519+ml-dsa-44",
+    "ssh-rsa+ml-dsa-44",
+    "ssh-ed25519",
+    "rsa-sha2-512",
+    "rsa-sha2-256",
+    "ecdsa-sha2-nistp256"
+  ],
+  "cipher": [
+    "aes256-gcm@openssh.com",
+    "aes128-gcm@openssh.com",
+    "chacha20-poly1305@openssh.com",
+    "aes256-ctr",
+    "aes192-ctr",
+    "aes128-ctr"
+  ],
+  "mac": [
+    "hmac-sha2-256-etm@openssh.com",
+    "hmac-sha2-512-etm@openssh.com",
+    "hmac-sha2-256",
+    "hmac-sha2-512",
+    "umac-128-etm@openssh.com"
+  ]
+}
