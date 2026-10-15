@@ -3,82 +3,601 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>HttpClient5 后量子(PQC)迁移测试 — 可视化报告</title>
+<title>HttpClient5 后量子(PQC)迁移测试 · 可视化报告</title>
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
 <style>
-  :root { --ok:#16a34a; --bad:#dc2626; --warn:#d97706; --accent:#2563eb; --bg:#f8fafc; --card:#fff; }
+  :root { --ok:#16a34a; --bad:#dc2626; --warn:#d97706; --accent:#2563eb; --bg:#f8fafc; --card:#fff;
+          --before:#b91c1c; --after:#15803d; --line:#e2e8f0; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; background: var(--bg); color: #1e293b; padding: 24px; }
-  h1 { font-size: 26px; margin-bottom: 4px; }
-  .sub { color: #64748b; font-size: 14px; margin-bottom: 20px; }
-  h2 { font-size: 20px; margin: 28px 0 12px; border-left: 4px solid var(--accent); padding-left: 10px; }
-  .cards { display: flex; gap: 16px; flex-wrap: wrap; }
-  .card { background: var(--card); border-radius: 12px; padding: 18px 22px; flex: 1; min-width: 240px;
-          box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-  .card .name { font-size: 13px; color: #64748b; }
-  .card .big { font-size: 30px; font-weight: 700; margin-top: 4px; }
-  .card .meta { font-size: 13px; margin-top: 6px; color: #475569; }
-  .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  body { font-family: "Segoe UI","Microsoft YaHei",sans-serif; background:var(--bg); color:#1e293b; padding:24px; }
+  h1 { font-size:26px; margin-bottom:4px; }
+  .sub { color:#64748b; font-size:14px; margin-bottom:16px; }
+  h2 { font-size:20px; margin:28px 0 12px; border-left:4px solid var(--accent); padding-left:10px; }
+  h3 { font-size:16px; margin:20px 0 10px; color:#334155; }
+  .tabs { display:flex; gap:8px; margin:16px 0; flex-wrap:wrap; }
+  .tab { padding:8px 18px; border-radius:8px; background:#e2e8f0; cursor:pointer; font-size:14px; font-weight:600;
+         border:1px solid transparent; }
+  .tab.active { background:var(--accent); color:#fff; }
+  .tabpane { display:none; } .tabpane.active { display:block; }
+  .cards { display:flex; gap:16px; flex-wrap:wrap; }
+  .card { background:var(--card); border-radius:12px; padding:18px 22px; flex:1; min-width:220px;
+          box-shadow:0 1px 3px rgba(0,0,0,.08); }
+  .card .name { font-size:13px; color:#64748b; }
+  .card .big { font-size:30px; font-weight:700; margin-top:4px; }
+  .card .meta { font-size:13px; margin-top:6px; color:#475569; }
+  .chart { background:var(--card); border-radius:12px; padding:16px; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+  .row { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .row3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; }
+  table { width:100%; border-collapse:collapse; background:var(--card); border-radius:12px; overflow:hidden;
+          box-shadow:0 1px 3px rgba(0,0,0,.08); font-size:13px; }
+  th,td { padding:10px 12px; text-align:left; border-bottom:1px solid var(--line); }
+  th { background:#f1f5f9; font-weight:600; }
+  tr:last-child td { border-bottom:none; }
+  .badge { display:inline-block; padding:2px 10px; border-radius:999px; font-size:12px; font-weight:600; }
   .ok { background:#dcfce7; color:#166534; } .bad { background:#fee2e2; color:#991b1b; }
-  .chart { background: var(--card); border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 12px; overflow: hidden;
-          box-shadow: 0 1px 3px rgba(0,0,0,.08); font-size: 13px; }
-  th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #e2e8f0; }
-  th { background: #f1f5f9; font-weight: 600; }
-  tr:last-child td { border-bottom: none; }
-  .tag { font-family: Consolas, monospace; font-size: 12px; background:#eef2ff; color:#3730a3; padding:1px 6px; border-radius:4px; }
-  @media (max-width: 900px) { .row { grid-template-columns: 1fr; } }
+  .tag { font-family:Consolas,monospace; font-size:12px; background:#eef2ff; color:#3730a3; padding:1px 6px; border-radius:4px; }
+  .codecmp { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin:12px 0; }
+  .colhead { padding:8px 12px; border-radius:8px 8px 0 0; font-weight:700; font-size:13px; color:#fff; }
+  .colhead.before { background:var(--before); } .colhead.after { background:var(--after); }
+  .col pre { background:#0f172a; color:#e2e8f0; border-radius:0 0 8px 8px; padding:14px; overflow-x:auto;
+             font-family:Consolas,"Courier New",monospace; font-size:12.5px; line-height:1.55; min-height:60px; }
+  .col pre code { white-space:pre; }
+  .note { font-size:13px; color:#475569; background:#eff6ff; border-left:3px solid var(--accent); padding:8px 12px;
+          border-radius:0 6px 6px 0; margin:8px 0 16px; }
+  .bp { background:var(--card); border-radius:10px; padding:12px 16px; margin:10px 0; box-shadow:0 1px 3px rgba(0,0,0,.06); }
+  .bp b { color:var(--bad); }
+  .flowbox { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:14px 0; }
+  .fbox { background:var(--card); border:2px solid var(--line); border-radius:10px; padding:12px 16px; text-align:center;
+          font-size:13px; min-width:150px; box-shadow:0 1px 3px rgba(0,0,0,.06); }
+  .fbox.before { border-color:var(--before); background:#fef2f2; }
+  .fbox.after { border-color:var(--after); background:#f0fdf4; }
+  .arrow { color:var(--accent); font-weight:700; font-size:18px; }
+  .mermaid { background:var(--card); border-radius:12px; padding:16px; box-shadow:0 1px 3px rgba(0,0,0,.08);
+             display:flex; justify-content:center; }
+  .kp { font-weight:700; color:var(--warn); }
+  @media (max-width:900px){ .row,.row3,.codecmp{ grid-template-columns:1fr; } }
 </style>
 </head>
 <body>
+
 <h1>HttpClient5 后量子（PQC）迁移测试 · 可视化报告</h1>
-<div class="sub">JDK 27 · HttpClient 5.6.4 · BouncyCastle 1.86 · 验证日期 2026-09-24</div>
+<div class="sub">JDK 27 · HttpClient 5.6.4 · BouncyCastle 1.86 · 验证日期 2026-09-24 · 数据对应 logs/runA.log · runB.log · runC.log</div>
 
-<h2>总览：三方案 PASS / 断点</h2>
-<div class="cards">
-  <div class="card"><div class="name">方案A · JDK 内置</div><div class="big">1 <span style="font-size:16px;color:#64748b">PASS</span></div>
-    <div class="meta">断点(预期失败) <b style="color:#dc2626">3</b> · 技术栈 SunJSSE</div></div>
-  <div class="card"><div class="name">方案B · BouncyCastle</div><div class="big">4 <span style="font-size:16px;color:#64748b">PASS</span></div>
-    <div class="meta">断点(预期失败) <b style="color:#dc2626">3</b> · 技术栈 BCJSSE</div></div>
-  <div class="card"><div class="name">方案C · 混合式（推荐）</div><div class="big">5 <span style="font-size:16px;color:#64748b">PASS</span></div>
-    <div class="meta">断点(预期失败) <b style="color:#dc2626">1</b> · 技术栈 JDK+BC 双栈</div></div>
+<div class="tabs">
+  <div class="tab active" data-tab="overview">总览</div>
+  <div class="tab" data-tab="A">方案A · JDK内置</div>
+  <div class="tab" data-tab="B">方案B · BouncyCastle</div>
+  <div class="tab" data-tab="C">方案C · 混合式</div>
 </div>
 
-<div class="row" style="margin-top:16px">
-  <div class="chart" id="chartPassFail" style="height:340px"></div>
-  <div class="chart" id="chartCapability" style="height:340px"></div>
+<!-- ==================== 总览 ==================== -->
+<div id="tab-overview" class="tabpane active">
+  <div class="cards">
+    <div class="card"><div class="name">方案A · JDK 内置</div><div class="big">1 <span style="font-size:16px;color:#64748b">PASS</span></div>
+      <div class="meta">断点(预期失败) <b style="color:#dc2626">3</b> · 技术栈 SunJSSE</div></div>
+    <div class="card"><div class="name">方案B · BouncyCastle</div><div class="big">4 <span style="font-size:16px;color:#64748b">PASS</span></div>
+      <div class="meta">断点(预期失败) <b style="color:#dc2626">3</b> · 技术栈 BCJSSE</div></div>
+    <div class="card"><div class="name">方案C · 混合式（推荐）</div><div class="big">5 <span style="font-size:16px;color:#64748b">PASS</span></div>
+      <div class="meta">断点(预期失败) <b style="color:#dc2626">1</b> · 技术栈 JDK+BC 双栈</div></div>
+  </div>
+
+  <div class="row" style="margin-top:16px">
+    <div class="chart" id="chartPassFail" style="height:340px"></div>
+    <div class="chart" id="chartCapability" style="height:340px"></div>
+  </div>
+
+  <h3>正向场景握手耗时（ms，受 JIT/负载影响，仅参考）</h3>
+  <div class="chart" id="chartTiming" style="height:360px"></div>
+
+  <h3>各方案场景明细（详见下方方案页）</h3>
+  <table>
+    <tr><th>方案</th><th>场景</th><th>结果</th><th>HTTP</th><th>耗时</th><th>TLS 会话（协议 / 套件）</th></tr>
+    <tr><td rowspan="2"><b>A</b></td><td>正向：JDK↔JDK 混合密钥交换 X25519MLKEM768</td><td><span class="badge ok">PASS</span></td><td>200</td><td>115ms</td><td>TLSv1.3 / TLS_AES_256_GCM_SHA384</td></tr>
+    <tr><td>断点×3：ML-DSA 证书 / 无共同群组 / TLS1.2</td><td><span class="badge bad">FAIL(预期)</span></td><td>—</td><td>—</td><td>—</td></tr>
+    <tr><td rowspan="5"><b>B</b></td><td>正向：ML-DSA-65 证书 + 混合 X25519MLKEM768</td><td><span class="badge ok">PASS</span></td><td>200</td><td>156ms</td><td>TLSv1.3 / TLS_CHACHA20_POLY1305_SHA256</td></tr>
+    <tr><td>正向：ML-DSA-65 证书 + 纯 MLKEM768（JDK 无法做到）</td><td><span class="badge ok">PASS</span></td><td>200</td><td>12ms</td><td>TLSv1.3 / TLS_CHACHA20_POLY1305_SHA256</td></tr>
+    <tr><td>互操作：JDK 客户端 ↔ BC 服务端</td><td><span class="badge ok">PASS</span></td><td>200</td><td>48ms</td><td>TLSv1.3 / TLS_CHACHA20_POLY1305_SHA256</td></tr>
+    <tr><td>互操作：BC 客户端 ↔ JDK 服务端</td><td><span class="badge ok">PASS</span></td><td>200</td><td>27ms</td><td>TLSv1.3 / TLS_AES_256_GCM_SHA384</td></tr>
+    <tr><td>断点×3：JDK 无纯 MLKEM / JDK 强制 MLKEM768 / JDK↔ML-DSA 证书</td><td><span class="badge bad">FAIL(预期)</span></td><td>—</td><td>—</td><td>—</td></tr>
+    <tr><td rowspan="6"><b>C</b></td><td>互操作：JDK 客户端 ↔ BC 服务端</td><td><span class="badge ok">PASS</span></td><td>200</td><td>179ms</td><td>TLSv1.3 / TLS_CHACHA20_POLY1305_SHA256</td></tr>
+    <tr><td>互操作：BC 客户端 ↔ JDK 服务端</td><td><span class="badge ok">PASS</span></td><td>200</td><td>34ms</td><td>TLSv1.3 / TLS_AES_256_GCM_SHA384</td></tr>
+    <tr><td>回退：PQC 优先客户端 ↔ 传统 x25519 服务器</td><td><span class="badge ok">PASS</span></td><td>200</td><td>65ms</td><td>TLSv1.3 / TLS_AES_256_GCM_SHA384</td></tr>
+    <tr><td>回退：BC 客户端 ↔ 传统服务器</td><td><span class="badge ok">PASS</span></td><td>200</td><td>66ms</td><td>TLSv1.3 / TLS_AES_256_GCM_SHA384</td></tr>
+    <tr><td>正向：JDK↔JDK 生产默认</td><td><span class="badge ok">PASS</span></td><td>200</td><td>37ms</td><td>TLSv1.3 / TLS_AES_256_GCM_SHA384</td></tr>
+    <tr><td>断点：未迁移客户端 ↔ PQC-only 服务器</td><td><span class="badge bad">FAIL(预期)</span></td><td>—</td><td>—</td><td>—</td></tr>
+  </table>
 </div>
 
-<h2>各方案场景明细</h2>
-<table>
-  <tr><th>方案</th><th>场景</th><th>结果</th><th>HTTP</th><th>耗时</th><th>TLS 会话（协议 / 套件）</th></tr>
-  <tr><td rowspan="2"><b>A</b></td><td>正向：JDK↔JDK 混合密钥交换 X25519MLKEM768</td><td><span class="badge ok">PASS</span></td><td>200</td><td>115ms</td><td>TLSv1.3 / TLS_AES_256_GCM_SHA384</td></tr>
-  <tr><td>断点×3：ML-DSA 证书 / 无共同群组 / TLS1.2</td><td><span class="badge bad">FAIL(预期)</span></td><td>—</td><td>—</td><td>—</td></tr>
-  <tr><td rowspan="5"><b>B</b></td><td>正向：ML-DSA-65 证书 + 混合 X25519MLKEM768</td><td><span class="badge ok">PASS</span></td><td>200</td><td>156ms</td><td>TLSv1.3 / TLS_CHACHA20_POLY1305_SHA256</td></tr>
-  <tr><td>正向：ML-DSA-65 证书 + 纯 MLKEM768（JDK 无法做到）</td><td><span class="badge ok">PASS</span></td><td>200</td><td>12ms</td><td>TLSv1.3 / TLS_CHACHA20_POLY1305_SHA256</td></tr>
-  <tr><td>互操作：JDK 客户端 ↔ BC 服务端</td><td><span class="badge ok">PASS</span></td><td>200</td><td>48ms</td><td>TLSv1.3 / TLS_CHACHA20_POLY1305_SHA256</td></tr>
-  <tr><td>互操作：BC 客户端 ↔ JDK 服务端</td><td><span class="badge ok">PASS</span></td><td>200</td><td>27ms</td><td>TLSv1.3 / TLS_AES_256_GCM_SHA384</td></tr>
-  <tr><td>断点×3：JDK 无纯 MLKEM / JDK 强制 MLKEM768 / JDK↔ML-DSA 证书</td><td><span class="badge bad">FAIL(预期)</span></td><td>—</td><td>—</td><td>—</td></tr>
-  <tr><td rowspan="6"><b>C</b></td><td>互操作：JDK 客户端 ↔ BC 服务端</td><td><span class="badge ok">PASS</span></td><td>200</td><td>179ms</td><td>TLSv1.3 / TLS_CHACHA20_POLY1305_SHA256</td></tr>
-  <tr><td>互操作：BC 客户端 ↔ JDK 服务端</td><td><span class="badge ok">PASS</span></td><td>200</td><td>34ms</td><td>TLSv1.3 / TLS_AES_256_GCM_SHA384</td></tr>
-  <tr><td>回退：PQC 优先客户端 ↔ 传统 x25519 服务器</td><td><span class="badge ok">PASS</span></td><td>200</td><td>65ms</td><td>TLSv1.3 / TLS_AES_256_GCM_SHA384</td></tr>
-  <tr><td>回退：BC 客户端 ↔ 传统服务器</td><td><span class="badge ok">PASS</span></td><td>200</td><td>66ms</td><td>TLSv1.3 / TLS_AES_256_GCM_SHA384</td></tr>
-  <tr><td>正向：JDK↔JDK 生产默认</td><td><span class="badge ok">PASS</span></td><td>200</td><td>37ms</td><td>TLSv1.3 / TLS_AES_256_GCM_SHA384</td></tr>
-  <tr><td>断点：未迁移客户端 ↔ PQC-only 服务器</td><td><span class="badge bad">FAIL(预期)</span></td><td>—</td><td>—</td><td>—</td></tr>
-</table>
+<!-- ==================== 方案A ==================== -->
+<div id="tab-A" class="tabpane">
+  <h2>方案A · JDK 内置 PQC（X25519MLKEM768 密钥交换）</h2>
+  <table>
+    <tr><th>项</th><th>内容</th></tr>
+    <tr><td>被测对象</td><td>Apache HttpClient 5.6.4 + JDK 内置 JSSE（SunJSSE）</td></tr>
+    <tr><td>环境</td><td>JDK 27 (Oracle, build 27+35)，Windows，无第三方密码学依赖</td></tr>
+    <tr><td>目标</td><td>仅用 JDK 内置能力完成 TLS 1.3 后量子密钥交换迁移</td></tr>
+    <tr><td>启用能力</td><td>TLS 群组 <span class="tag">X25519MLKEM768</span>（混合式）；证书仍 ECDSA</td></tr>
+    <tr><td>结果</td><td><span class="badge ok">正向 1 项通过</span> <span class="badge bad">断点 3 项按预期失败</span></td></tr>
+  </table>
 
-<h2>正向场景握手耗时（ms）</h2>
-<div class="chart" id="chartTiming" style="height:360px"></div>
+  <h3>可视化：迁移前 → 迁移后</h3>
+  <div class="mermaid">
+flowchart LR
+  subgraph 改造前["改造前（迁移前）"]
+    C1[HttpClient5 默认 SSLContext] --> S1[默认群组<br/>x25519 / P-256]
+    S1 --> H1[ECDHE 经典密钥交换<br/>可被量子机破解]
+  end
+  subgraph 改造后["改造后（PQC 迁移后）"]
+    C2[HttpClient5 + PqcSocketFactory] --> S2[群组<br/>X25519MLKEM768, x25519]
+    S2 --> H2[ML-KEM + X25519 混合密钥交换<br/>量子抗性 + 兼容回退]
+  end
+  改造前 -. 升级 JDK 21+ / 强制 TLS1.3 .-> 改造后
+  </div>
+
+  <div class="row3" style="margin-top:16px">
+    <div class="chart" id="pieA" style="height:220px"></div>
+    <div class="chart" id="capA" style="height:220px"></div>
+    <div class="card" style="min-width:0"><div class="name">结论</div><div style="font-size:14px;margin-top:6px">
+      可立即上线保护会话密钥：JDK 21+ + 群组 <span class="tag">X25519MLKEM768,x25519</span> + 强制 TLS1.3。<br>
+      <span class="kp">限制</span>：证书仍 ECDSA/RSA，需全链路 PQC 时叠加方案B/C。</div></div>
+  </div>
+
+  <h3>迁移方案</h3>
+  <div class="flowbox">
+    <div class="fbox before">P0 · 混合密钥交换<br>X25519MLKEM768</div><div class="arrow">→</div>
+    <div class="fbox">证书保持 ECDSA<br>（JDK JSSE 限制）</div><div class="arrow">→</div>
+    <div class="fbox after">后续叠加 PQC 证书<br>（升级方案B/C）</div>
+  </div>
+
+  <h3>改造点（改造前 vs 改造后）</h3>
+
+  <h4>① 显式指定 SunJSSE 提供者构建 SSLContext</h4>
+  <div class="codecmp">
+    <div class="col"><div class="colhead before">改造前</div>
+      <pre><code>// 未 pin 提供者（多提供者环境会漂移）
+SSLContext ctx = SSLContext.getInstance("TLS");
+TrustManagerFactory tmf =
+    TrustManagerFactory.getInstance("PKIX");
+tmf.init(trustStore);
+ctx.init(null, tmf.getTrustManagers(),
+         new SecureRandom());</code></pre></div>
+    <div class="col"><div class="colhead after">改造后</div>
+      <pre><code>public static final String SUN_JSSE = "SunJSSE";
+SSLContext ctx =
+    SSLContext.getInstance("TLS", SUN_JSSE);
+TrustManagerFactory tmf =
+    TrustManagerFactory.getInstance("PKIX", SUN_JSSE);
+tmf.init(trustStore);
+ctx.init(null, tmf.getTrustManagers(),
+         new SecureRandom());</code></pre></div>
+  </div>
+  <p class="note">变化：增加 <span class="tag">SUN_JSSE</span> 显式指定。若同时注册 BouncyCastle，<code>SSLContext.getInstance("TLS")</code> 会优先命中 BCJSSE（提供者顺序），导致"JDK 方案"名不副实。</p>
+
+  <h4>② 自定义 SSLSocketFactory 注入 PQC 群组（核心改造）</h4>
+  <div class="codecmp">
+    <div class="col"><div class="colhead before">改造前</div>
+      <pre><code>// 默认套接字工厂，未声明 PQC 群组
+SSLSocketFactory f = sslContext.getSocketFactory();
+Socket s = f.createSocket(host, port);
+// 仅 x25519 / P-256（经典 ECDHE）</code></pre></div>
+    <div class="col"><div class="colhead after">改造后</div>
+      <pre><code>// PqcSocketFactory.configure()
+SSLParameters p = sslSocket.getSSLParameters();
+p.setNamedGroups(namedGroups);
+// ["X25519MLKEM768","x25519"]
+p.setProtocols(protocols);      // ["TLSv1.3"]
+p.setCipherSuites(sslSocket.getEnabledCipherSuites());
+sslSocket.setSSLParameters(p);</code></pre></div>
+  </div>
+  <p class="note">核心差异：<code>setNamedGroups(["X25519MLKEM768","x25519"])</code> —— 迁移前只发经典群组，迁移后以 PQC 优先、x25519 兜底。</p>
+
+  <h4>③ HttpClient5 接入自定义 SSLContext</h4>
+  <div class="codecmp">
+    <div class="col"><div class="colhead before">改造前</div>
+      <pre><code>SSLConnectionSocketFactory csf =
+  new SSLConnectionSocketFactory(
+      SSLContext.getDefault());
+PoolingHttpClientConnectionManager cm =
+  PoolingHttpClientConnectionManagerBuilder
+    .create().setSSLSocketFactory(csf).build();
+CloseableHttpClient client =
+  HttpClients.custom()
+    .setConnectionManager(cm).build();</code></pre></div>
+    <div class="col"><div class="colhead after">改造后</div>
+      <pre><code>// HttpClientFactory.build()
+PqcSocketFactory sf =
+  new PqcSocketFactory(ctx, namedGroups,
+                       protocols, null);
+SSLConnectionSocketFactory csf =
+  new SSLConnectionSocketFactory(
+      sf, protocols, null,
+      NoopHostnameVerifier.INSTANCE);
+PoolingHttpClientConnectionManager cm = ...
+HttpClients.custom()
+  .setConnectionManager(cm).build();</code></pre></div>
+  </div>
+  <p class="note">变化：<code>SSLConnectionSocketFactory</code> 接收携带 PQC 群组的 <code>PqcSocketFactory</code>（而非默认工厂），TLS 会话协商由它决定。</p>
+
+  <h4>④ 服务端启用 PQC 群组</h4>
+  <div class="codecmp">
+    <div class="col"><div class="colhead before">改造前</div>
+      <pre><code>SSLServerSocket ss =
+  (SSLServerSocket) factory.createServerSocket(port);
+ss.setEnabledProtocols({"TLSv1.3"});</code></pre></div>
+    <div class="col"><div class="colhead after">改造后</div>
+      <pre><code>SSLParameters p = ss.getSSLParameters();
+p.setProtocols({"TLSv1.3"});
+p.setNamedGroups(namedGroups);
+p.setCipherSuites(ss.getEnabledCipherSuites());
+ss.setSSLParameters(p);</code></pre></div>
+  </div>
+  <p class="note">服务端与客户端必须同时声明 PQC 群组，否则 <code>No common named group</code>。</p>
+
+  <h4>⑤ 部署配置（非代码）</h4>
+  <div class="codecmp">
+    <div class="col"><div class="colhead before">改造前</div>
+      <pre><code># 无 PQC 群组配置
+# （默认 x25519/P-256）</code></pre></div>
+    <div class="col"><div class="colhead after">改造后</div>
+      <pre><code>-Djdk.tls.namedGroups=
+   X25519MLKEM768,x25519</code></pre></div>
+  </div>
+
+  <h3>断点分析</h3>
+  <div class="bp"><b>5.1 【关键断点】JDK JSSE 不支持 ML-DSA 证书做 TLS 认证</b><br>
+    <b>现象</b>：ML-DSA-65 证书服务端握手失败 <code>No available authentication scheme</code><br>
+    <b>根因</b>：对 <code>sun.security.ssl.SignatureScheme</code> 反射枚举，JDK 27 TLS 签名方案<b>不含 mldsa44/65/87</b>，无法用 ML-DSA 私钥签名 CertificateVerify<br>
+    <b>影响</b>：纯 JDK 方案只能用 ECDSA/RSA 证书；PQC 证书必须依赖 BCJSSE<br>
+    <b>证据</b>：<code>X509Authentication: No X.509 cert selected for EC/EdDSA/RSA</code></div>
+  <div class="bp"><b>5.2 【断点】未启用 PQC 群组导致无共同群组</b><br>
+    服务端仅 X25519MLKEM768 + 客户端仅 x25519 → <code>SSLProtocolException: No common named group</code>。<br>
+    结论：一端强制纯 PQC 而另一端未配置则直接断连；迁移必须两端协调、以混合群组打底。</div>
+  <div class="bp"><b>5.3 【断点】PQC 混合群组仅支持 TLS 1.3</b><br>
+    客户端强制 TLS1.2 → <code>protocol_version</code>。迁移前提是全面启用 TLS 1.3（避免降级）。</div>
+  <div class="bp"><b>5.4 顺带发现</b>：JDK 27 <code>keytool -keyalg ML-DSA-65</code> 可直接生成 ML-DSA 自签名证书。</div>
+
+  <h3>测试结果明细</h3>
+  <table>
+    <tr><th>#</th><th>场景</th><th>配置</th><th>结果</th><th>明细</th></tr>
+    <tr><td>1</td><td>正向：JDK↔JDK 混合密钥交换</td><td>ECDSA 证书 + [X25519MLKEM768,x25519]</td><td><span class="badge ok">PASS</span></td><td>HTTP 200, 115ms, TLSv1.3 / TLS_AES_256_GCM_SHA384</td></tr>
+    <tr><td>2</td><td>断点：ML-DSA 证书在 JDK JSSE</td><td>JDK 服务端 ML-DSA-65 证书</td><td><span class="badge bad">预期失败</span></td><td>No available authentication scheme</td></tr>
+    <tr><td>3</td><td>断点：无共同群组</td><td>服务端仅 X25519MLKEM768 + 客户端仅 x25519</td><td><span class="badge bad">预期失败</span></td><td>No common named group</td></tr>
+    <tr><td>4</td><td>断点：强制 TLS1.2</td><td>客户端 TLSv1.2</td><td><span class="badge bad">预期失败</span></td><td>protocol_version</td></tr>
+  </table>
+  <p class="note">服务端最终协商：<code>TLSv1.3 / TLS_AES_256_GCM_SHA384</code>（确认协商了 PQC 混合群组密钥交换）。</p>
+</div>
+
+<!-- ==================== 方案B ==================== -->
+<div id="tab-B" class="tabpane">
+  <h2>方案B · BouncyCastle BCJSSE 全链路 PQC（ML-DSA 证书 + ML-KEM）</h2>
+  <table>
+    <tr><th>项</th><th>内容</th></tr>
+    <tr><td>被测对象</td><td>Apache HttpClient 5.6.4 + BouncyCastle BCJSSE（bctls-jdk18on 1.86）</td></tr>
+    <tr><td>依赖</td><td>bcprov-jdk18on-1.86 / bcutil-jdk18on-1.86 / bctls-jdk18on-1.86</td></tr>
+    <tr><td>目标</td><td>全链路 PQC：ML-DSA-65 证书签名（FIPS 204）+ ML-KEM 密钥交换（混合/纯）</td></tr>
+    <tr><td>结果</td><td><span class="badge ok">正向/互操作 4 项通过</span> <span class="badge bad">断点 3 项按预期失败</span></td></tr>
+  </table>
+
+  <h3>可视化：迁移前 → 迁移后</h3>
+  <div class="mermaid">
+flowchart LR
+  subgraph 改造前["改造前（迁移前）"]
+    C1[HttpClient5 默认 SSLContext] --> S1[群组 x25519 + ECDSA 证书]
+    S1 --> H1[经典 ECDHE + RSA/ECDSA 认证<br/>全链路可被量子机破解]
+  end
+  subgraph 改造后["改造后（BC 全链路 PQC）"]
+    C2[HttpClient5 + BCJSSE SSLContext] --> S2[群组 X25519MLKEM768 / 纯 MLKEM768]
+    S2 --> H2[ML-KEM 密钥交换<br/>+ ML-DSA-65 证书签名]
+  end
+  改造前 -. 引入 bcprov/bcutil/bctls + 显式注入签名方案 .-> 改造后
+  </div>
+
+  <div class="row3" style="margin-top:16px">
+    <div class="chart" id="pieB" style="height:220px"></div>
+    <div class="chart" id="capB" style="height:220px"></div>
+    <div class="card" style="min-width:0"><div class="name">结论</div><div style="font-size:14px;margin-top:6px">
+      可实现<b>全链路后量子</b>：PQC 密钥交换 + ML-DSA-65 证书。<br>
+      <span class="kp">代价</span>：第三方依赖（BC License 需法务确认）+ 显式注入签名方案。</div></div>
+  </div>
+
+  <h3>BC 相对 JDK 的增量能力（实测确认）</h3>
+  <table>
+    <tr><th>能力</th><th>JDK 27</th><th>BCJSSE 1.86</th></tr>
+    <tr><td>TLS 群组 X25519MLKEM768（混合）</td><td><span class="badge ok">✅</span></td><td><span class="badge ok">✅</span></td></tr>
+    <tr><td>TLS 群组纯 MLKEM768/512/1024</td><td><span class="badge bad">❌</span></td><td><span class="badge ok">✅</span></td></tr>
+    <tr><td>证书签名 ML-DSA-65（TLS 认证）</td><td><span class="badge bad">❌</span></td><td><span class="badge ok">✅（需显式注入）</span></td></tr>
+    <tr><td>SLH-DSA / Falcon 密钥生成</td><td><span class="badge bad">❌</span></td><td><span class="badge ok">✅</span></td></tr>
+    <tr><td>BCSSLParameters.setSignatureSchemes(["mldsa65",...])</td><td>—</td><td><span class="badge ok">✅（关键改造点）</span></td></tr>
+  </table>
+
+  <h3>迁移方案（步骤）</h3>
+  <div class="flowbox">
+    <div class="fbox">① 引入 bcprov+bcutil+bctls</div><div class="arrow">→</div>
+    <div class="fbox">② 注册 BC/BCJSSE 提供者</div><div class="arrow">→</div>
+    <div class="fbox">③ BC 生成 ML-DSA-65 证书</div><div class="arrow">→</div>
+    <div class="fbox after">④ 显式注入 mldsa 签名方案</div>
+  </div>
+
+  <h3>改造点（改造前 vs 改造后）</h3>
+
+  <h4>① BC 提供者注册（顺序敏感）</h4>
+  <div class="codecmp">
+    <div class="col"><div class="colhead before">改造前</div>
+      <pre><code>// 无 BouncyCastle 提供者
+// 仅 JDK 内置提供者</code></pre></div>
+    <div class="col"><div class="colhead after">改造后</div>
+      <pre><code>Security.removeProvider("BC");
+Security.removeProvider("BCJSSE");
+Security.insertProviderAt(
+  new BouncyCastleProvider(), 1);
+Security.insertProviderAt(
+  new BouncyCastleJsseProvider(), 2);</code></pre></div>
+  </div>
+  <p class="note">BCJSSE 必须插到 JDK 之前；副作用是 <code>SSLContext.getInstance("TLS")</code> 默认选中 BCJSSE → JDK 上下文必须 pin "SunJSSE"。</p>
+
+  <h4>② BCJSSE SSLContext（服务端/客户端）</h4>
+  <div class="codecmp">
+    <div class="col"><div class="colhead before">改造前</div>
+      <pre><code>SSLContext ctx =
+  SSLContext.getInstance("TLS", "SunJSSE");
+KeyManagerFactory kmf =
+  KeyManagerFactory.getInstance("SunX509");</code></pre></div>
+    <div class="col"><div class="colhead after">改造后</div>
+      <pre><code>// BCJSSE
+KeyManagerFactory kmf =
+  KeyManagerFactory.getInstance(
+      "X.509", "BCJSSE");
+kmf.init(ks, password.toCharArray());
+SSLContext ctx =
+  SSLContext.getInstance("TLS", "BCJSSE");
+ctx.init(kmf.getKeyManagers(), null,
+         new SecureRandom());</code></pre></div>
+  </div>
+  <p class="note">KeyManagerFactory 用 BCJSSE 的 <code>X.509</code>，TrustManagerFactory 用 BCJSSE 的 <code>PKIX</code>，否则无法加载/校验 ML-DSA 证书。</p>
+
+  <h4>③【关键】BCJSSE 逐连接注入 PQC 签名方案与群组</h4>
+  <div class="codecmp">
+    <div class="col"><div class="colhead before">改造前</div>
+      <pre><code>// 只设群组，不设签名方案
+BCSSLParameters p = bcSocket.getParameters();
+p.setNamedGroups({"X25519MLKEM768","x25519"});
+bcSocket.setParameters(p);
+// 结果：ML-DSA 证书服务端握手
+// 报 "found no selectable cipher suite"</code></pre></div>
+    <div class="col"><div class="colhead after">改造后</div>
+      <pre><code>BCSSLParameters p = bcSocket.getParameters();
+p.setNamedGroups(namedGroups);
+p.setProtocols({"TLSv1.3"});
+p.setCipherSuites(sslSocket.getEnabledCipherSuites());
+p.setSignatureSchemes(PQC_SIGNATURE_SCHEMES);
+// ["mldsa65","mldsa44","mldsa87",...]
+bcSocket.setParameters(p);</code></pre></div>
+  </div>
+  <p class="note">BCJSSE 不读全局 <code>jdk.tls.signatureSchemes</code> 且默认不含 mldsa；必须逐连接 <code>setSignatureSchemes</code>，否则 PQC 证书握手直接失败。</p>
+
+  <h4>④ BC 原生生成 ML-DSA-65 证书</h4>
+  <div class="codecmp">
+    <div class="col"><div class="colhead before">改造前</div>
+      <pre><code># keytool 生成 RSA/EC 证书
+keytool -genkeypair -keyalg EC \
+  -groupname secp256r1 -dname "CN=..."</code></pre></div>
+    <div class="col"><div class="colhead after">改造后</div>
+      <pre><code>KeyPairGenerator kpg =
+  KeyPairGenerator.getInstance(
+      "ML-DSA-65", "BC");
+KeyPair kp = kpg.generateKeyPair();
+JcaX509v3CertificateBuilder b =
+  new JcaX509v3CertificateBuilder(
+      subject, BigInteger.valueOf(now),
+      new Date(...), new Date(...),
+      subject, kp.getPublic());
+new JcaContentSignerBuilder("ML-DSA-65")
+  .build(kp.getPrivate());</code></pre></div>
+  </div>
+  <p class="note">证书签名算法从 RSA/ECDSA 变为 ML-DSA-65（FIPS 204），公钥/签名均为后量子算法。</p>
+
+  <h4>⑤ HttpClient5 接入（同方案A）</h4>
+  <div class="codecmp">
+    <div class="col"><div class="colhead before">改造前</div>
+      <pre><code>new SSLConnectionSocketFactory(
+    SSLContext.getDefault())</code></pre></div>
+    <div class="col"><div class="colhead after">改造后</div>
+      <pre><code>// 与方案A一致
+new SSLConnectionSocketFactory(
+    pqcSocketFactory, protocols, null,
+    NoopHostnameVerifier.INSTANCE);
+// SSLContext 来自 bcClientContext()</code></pre></div>
+  </div>
+
+  <h3>断点分析</h3>
+  <div class="bp"><b>5.1 【关键断点】BCJSSE 默认签名方案不含 ML-DSA</b><br>
+    <b>现象</b>：ML-DSA 证书服务端 + 客户端未注入签名方案 → <code>TlsFatalAlert: found no selectable cipher suite</code><br>
+    <b>根因</b>：<code>SignatureSchemeInfo</code> 虽含 mldsa44/65/87 但默认 <code>isEnabled()=false</code>；ML-DSA 私钥无法签名 → 服务端过滤全部 TLS1.3 套件<br>
+    <b>修复</b>：双方显式 <code>setSignatureSchemes</code> 后握手成功（实测）。</div>
+  <div class="bp"><b>5.2 【互操作断点】BC 客户端对 JDK 服务端不可显式设置签名方案</b><br>
+    BC 客户端显式注入签名方案 → JDK 服务端 <code>No X.509 cert selected for EC</code>（JDK 服务端缺陷路径）。<br>
+    修复：对 JDK 服务端<b>不设置</b>签名方案（走 BC 默认），实测互通正常。</div>
+  <div class="bp"><b>5.3 【断点】JDK 客户端无法认证 ML-DSA 证书</b><br>
+    JDK 客户端（信任 ML-DSA 证书）→ BC ML-DSA 服务端：服务端 <code>found no selectable cipher suite</code>。<br>
+    结论：PQC 证书端到端要求两端都支持 mldsa；JDK 端需升级 BC 栈。</div>
+  <div class="bp"><b>5.4 【断点】JDK 无纯 ML-KEM 群组</b><br>
+    JDK <code>setNamedGroups(["MLKEM768"])</code> 抛 IllegalArgumentException；仅 X25519MLKEM768 ↔ 仅 MLKEM768 无共同群组。<br>
+    结论：纯 ML-KEM 是 BC 独有能力，适合收敛阶段。</div>
+  <div class="bp"><b>5.5 顺带发现（工程层）</b>：BCJSSE <code>setSSLParameters</code> 清空默认套件（需回填）；<code>bctls</code> 依赖 <code>bcutil</code>（缺 jar 报 NoClassDefFoundError）。</div>
+
+  <h3>测试结果明细</h3>
+  <table>
+    <tr><th>#</th><th>场景</th><th>配置</th><th>结果</th><th>明细</th></tr>
+    <tr><td>1</td><td>正向：BC 全链路 PQC</td><td>ML-DSA-65 证书 + [X25519MLKEM768,x25519]</td><td><span class="badge ok">PASS</span></td><td>HTTP 200, 156ms, TLSv1.3 / CHACHA20</td></tr>
+    <tr><td>2</td><td>正向：纯 ML-KEM-768</td><td>ML-DSA-65 证书 + [MLKEM768]</td><td><span class="badge ok">PASS</span></td><td>HTTP 200, 12ms（JDK 无法做到）</td></tr>
+    <tr><td>3</td><td>互操作：JDK 客户端 ↔ BC 服务端</td><td>ECDSA 证书 + 混合群组</td><td><span class="badge ok">PASS</span></td><td>HTTP 200, 48ms</td></tr>
+    <tr><td>4</td><td>互操作：BC 客户端 ↔ JDK 服务端</td><td>ECDSA 证书 + 默认签名方案</td><td><span class="badge ok">PASS</span></td><td>HTTP 200, 27ms</td></tr>
+    <tr><td>5</td><td>断点：JDK 无纯 MLKEM</td><td>JDK[仅X25519MLKEM768] ↔ BC[仅MLKEM768]</td><td><span class="badge bad">预期失败</span></td><td>no selectable cipher suite</td></tr>
+    <tr><td>6</td><td>断点：JDK 强制 MLKEM768 字符串</td><td>JDK setNamedGroups(["MLKEM768"])</td><td><span class="badge bad">预期失败</span></td><td>IllegalArgumentException</td></tr>
+    <tr><td>7</td><td>断点：JDK 客户端 ↔ BC ML-DSA 证书</td><td>JDK 客户端</td><td><span class="badge bad">预期失败</span></td><td>JDK 无法提供 mldsa 方案</td></tr>
+  </table>
+  <p class="note">服务端最终协商：hybrid=pure=CHACHA20，bcEcdsaHybrid=CHACHA20，jdkEcdsaHybrid=AES_256_GCM。</p>
+</div>
+
+<!-- ==================== 方案C ==================== -->
+<div id="tab-C" class="tabpane">
+  <h2>方案C · 混合式双栈（JDK 内置 + BouncyCastle，推荐生产方案）</h2>
+  <table>
+    <tr><th>项</th><th>内容</th></tr>
+    <tr><td>被测对象</td><td>Apache HttpClient 5.6.4 + JDK JSSE + BouncyCastle BCJSSE 双栈并存</td></tr>
+    <tr><td>目标</td><td>生产推荐架构：PQC 优先、无缝回退、双栈互操作</td></tr>
+    <tr><td>结果</td><td><span class="badge ok">正向/互操作/回退 5 项通过</span> <span class="badge bad">断点 1 项按预期失败</span></td></tr>
+  </table>
+
+  <h3>可视化：迁移前 → 迁移后</h3>
+  <div class="mermaid">
+flowchart LR
+  subgraph 改造前["改造前（迁移前）"]
+    C1[HttpClient5 单栈 JDK] --> S1[群组 x25519 + ECDSA 证书]
+    S1 --> H1[经典 ECDHE<br/>可被量子机破解]
+  end
+  subgraph 改造后["改造后（混合式双栈，推荐）"]
+    C2[HttpClient5 JDK+BC 双栈] --> S2[群组 X25519MLKEM768, x25519]
+    S2 --> D{对端支持 PQC?}
+    D -- 是 --> H2[ML-KEM 混合密钥交换<br/>量子抗性]
+    D -- 否 --> H3[回退 x25519<br/>向后兼容]
+  end
+  改造前 -. 升级 JDK21+ / 引入 BC / 强制 TLS1.3 .-> 改造后
+  </div>
+
+  <div class="row3" style="margin-top:16px">
+    <div class="chart" id="pieC" style="height:220px"></div>
+    <div class="chart" id="capC" style="height:220px"></div>
+    <div class="card" style="min-width:0"><div class="name">结论</div><div style="font-size:14px;margin-top:6px">
+      <b>推荐生产路径</b>：双栈共存 + PQC 优先 + 传统回退，兼顾<b>量子抗性、兼容性、可回滚</b>。</div></div>
+  </div>
+
+  <h3>核心策略与迁移阶段</h3>
+  <div class="flowbox">
+    <div class="fbox before">P1 · JDK21+ 群组<br>[X25519MLKEM768,x25519]</div><div class="arrow">→</div>
+    <div class="fbox">P2 · 服务端混合群组<br>+ ECDSA 证书</div><div class="arrow">→</div>
+    <div class="fbox">P3 · 引入 BC 栈<br>ML-DSA 证书（仅BC）</div><div class="arrow">→</div>
+    <div class="fbox after">P4 · 收敛纯 PQC<br>纯 ML-KEM / 全链路</div>
+  </div>
+  <table>
+    <tr><th>阶段</th><th>动作</th><th>风险</th></tr>
+    <tr><td>P1</td><td>JDK 21+，TLS1.3 强制，群组 [X25519MLKEM768, x25519]</td><td><span class="badge ok">低</span>（x25519 兜底）</td></tr>
+    <tr><td>P2</td><td>服务端同时提供 PQC 群组 + x25519，证书仍 ECDSA</td><td><span class="badge ok">低</span></td></tr>
+    <tr><td>P3</td><td>引入 BC 栈，服务端启用 ML-DSA 证书（仅 BC）</td><td><span class="badge bad">中</span>（需显式签名方案）</td></tr>
+    <tr><td>P4</td><td>收敛：纯 X25519MLKEM768 / 纯 MLKEM768，全链路 PQC</td><td><span class="badge bad">高</span>（两端必须就绪）</td></tr>
+  </table>
+
+  <h3>改造点（改造前 vs 改造后）</h3>
+  <p class="note">方案C 复用方案A/B 全部改造点，核心差异在<b>双栈共存的提供者管理</b>与<b>按目标选择签名方案</b>。</p>
+
+  <h4>① 双栈注册 + JDK 上下文 provider 固定（共存关键）</h4>
+  <div class="codecmp">
+    <div class="col"><div class="colhead before">改造前</div>
+      <pre><code>// 仅 JDK：默认即 SunJSSE
+SSLContext ctx =
+  SSLContext.getInstance("TLS");</code></pre></div>
+    <div class="col"><div class="colhead after">改造后</div>
+      <pre><code>Security.insertProviderAt(
+  new BouncyCastleProvider(), 1);   // 位置1
+Security.insertProviderAt(
+  new BouncyCastleJsseProvider(), 2); // 位置2
+// JDK 上下文必须 pin：
+SSLContext jdkCtx =
+  SSLContext.getInstance("TLS", "SunJSSE");
+// BC 上下文：
+SSLContext bcCtx =
+  SSLContext.getInstance("TLS", "BCJSSE");</code></pre></div>
+  </div>
+  <p class="note">注册 BC 后 <code>SSLContext.getInstance("TLS")</code> 默认命中 BCJSSE（位置2）。双栈共存时每个上下文显式指定 provider，否则 JDK/BC 栈串线（实测踩坑）。</p>
+
+  <h4>② 按目标栈选择签名方案（互操作细节）</h4>
+  <div class="codecmp">
+    <div class="col"><div class="colhead before">改造前</div>
+      <pre><code>// 不区分对端，一律默认签名方案</code></pre></div>
+    <div class="col"><div class="colhead after">改造后</div>
+      <pre><code>// 对 BC ML-DSA 服务端（注入 mldsa）：
+PQC_SIGNATURE_SCHEMES = {
+  "mldsa87","mldsa65","mldsa44",
+  "ecdsa_secp256r1_sha256",
+  "ed25519","rsa_pss_rsae_sha256" };
+// 对 JDK 服务端：BC 客户端【不设置】
+// 签名方案（用 BC 默认），实测互通</code></pre></div>
+  </div>
+  <p class="note">同一套 BC 客户端代码，按目标服务端栈决定是否注入 mldsa 签名方案——这是跨栈互操作的关键差异。</p>
+
+  <h4>③ 服务端群组注入（含回退）</h4>
+  <div class="codecmp">
+    <div class="col"><div class="colhead before">改造前</div>
+      <pre><code>ss.setEnabledProtocols({"TLSv1.3"});
+// 仅版本，无群组声明</code></pre></div>
+    <div class="col"><div class="colhead after">改造后</div>
+      <pre><code>SSLParameters p = ss.getSSLParameters();
+p.setProtocols({"TLSv1.3"});
+p.setNamedGroups(namedGroups);
+// 互操作期：["X25519MLKEM768","x25519"]
+// 收敛期：["X25519MLKEM768"] / ["MLKEM768"]
+p.setCipherSuites(ss.getEnabledCipherSuites());
+ss.setSSLParameters(p);</code></pre></div>
+  </div>
+
+  <h4>④ HttpClient5 客户端构建（PQC 优先 + 回退）</h4>
+  <div class="codecmp">
+    <div class="col"><div class="colhead before">改造前</div>
+      <pre><code>CloseableHttpClient client =
+  HttpClients.custom().build();
+// 默认 ECDHE</code></pre></div>
+    <div class="col"><div class="colhead after">改造后</div>
+      <pre><code>PqcClient client =
+  HttpClientFactory.build("生产客户端",
+    jdkClientCtx,   // JDK 或 BC 上下文
+    new String[]{"X25519MLKEM768",
+                 "x25519"});
+// PQC 优先，x25519 回退</code></pre></div>
+  </div>
+  <p class="note">群组顺序决定了"优先 PQC、失败回退"的行为——兼容性与量子抗性的统一来源。</p>
+
+  <h3>断点分析</h3>
+  <div class="bp"><b>5.1 【断点】未启用 PQC 群组的传统客户端 ↔ PQC-only 服务端</b><br>
+    客户端仅 x25519 + 服务端仅 X25519MLKEM768 → <code>No common named group</code>。<br>
+    结论：正确姿势是"客户端 PQC 优先 + x25519 回退"，而不是只升级一端就强制收紧。</div>
+  <div class="bp"><b>5.2 复用断点</b>：JDK 无 mldsa TLS 签名方案（PQC 证书依赖 BC）；JDK 无纯 MLKEM；BCJSSE 默认不含 mldsa；BC 客户端对 JDK 服务端不可显式设置签名方案；注册 BC 后 "TLS" 默认选 BCJSSE。详见方案A/B 对应章节。</div>
+
+  <h3>测试结果明细</h3>
+  <table>
+    <tr><th>#</th><th>场景</th><th>配置</th><th>结果</th><th>明细</th></tr>
+    <tr><td>1</td><td>互操作：JDK 客户端 ↔ BC 服务端</td><td>[X25519MLKEM768,x25519]</td><td><span class="badge ok">PASS</span></td><td>HTTP 200, 179ms, TLSv1.3</td></tr>
+    <tr><td>2</td><td>互操作：BC 客户端 ↔ JDK 服务端</td><td>BC 默认签名方案</td><td><span class="badge ok">PASS</span></td><td>HTTP 200, 34ms, TLS_AES_256_GCM</td></tr>
+    <tr><td>3</td><td>回退：JDK 客户端 ↔ 传统服务器</td><td>客户端 PQC 优先，服务器仅 x25519</td><td><span class="badge ok">PASS</span></td><td>HTTP 200, 65ms（自动回退）</td></tr>
+    <tr><td>4</td><td>回退：BC 客户端 ↔ 传统服务器</td><td>同上</td><td><span class="badge ok">PASS</span></td><td>HTTP 200, 66ms</td></tr>
+    <tr><td>5</td><td>断点：未迁移客户端 ↔ PQC-only 服务器</td><td>客户端仅 x25519，服务器仅 X25519MLKEM768</td><td><span class="badge bad">预期失败</span></td><td>No common named group</td></tr>
+    <tr><td>6</td><td>正向：JDK ↔ JDK（生产默认）</td><td>[X25519MLKEM768,x25519]</td><td><span class="badge ok">PASS</span></td><td>HTTP 200, 37ms, TLSv1.3</td></tr>
+  </table>
+  <p class="note">服务端最终协商：bc=CHACHA20，jdk=AES_256_GCM，legacy=AES_256_GCM，pqcOnly=none（断点场景）。</p>
+</div>
 
 <script>
+mermaid.initialize({ startOnLoad: true, theme: "default", flowchart: { htmlLabels: true } });
+
+// Tabs
+document.querySelectorAll(".tab").forEach(tab => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+    document.querySelectorAll(".tabpane").forEach(p => p.classList.remove("active"));
+    tab.classList.add("active");
+    document.getElementById("tab-" + tab.dataset.tab).classList.add("active");
+    setTimeout(() => { chartPassFail.resize(); chartCapability.resize(); chartTiming.resize(); pieA.resize(); capA.resize(); pieB.resize(); capB.resize(); pieC.resize(); capC.resize(); }, 60);
+  });
+});
+
 const PASS_COL = "#16a34a", FAIL_COL = "#dc2626", ACCENT = "#2563eb";
+
+// ---- 总览图表 ----
 const chartPassFail = echarts.init(document.getElementById("chartPassFail"));
 chartPassFail.setOption({
   title: { text: "PASS / 断点(预期失败) 计数", left: "center", textStyle: { fontSize: 14 } },
-  tooltip: { trigger: "axis" },
-  legend: { bottom: 0, data: ["PASS", "断点(预期失败)"] },
-  xAxis: { type: "category", data: ["方案A\nJDK内置", "方案B\nBouncyCastle", "方案C\n混合式"] },
+  tooltip: { trigger: "axis" }, legend: { bottom: 0, data: ["PASS","断点(预期失败)"] },
+  xAxis: { type: "category", data: ["方案A\nJDK内置","方案B\nBouncyCastle","方案C\n混合式"] },
   yAxis: { type: "value", minInterval: 1 },
   series: [
     { name: "PASS", type: "bar", data: [1,4,5], itemStyle: { color: PASS_COL }, barWidth: 40 },
@@ -89,8 +608,7 @@ chartPassFail.setOption({
 const chartCapability = echarts.init(document.getElementById("chartCapability"));
 chartCapability.setOption({
   title: { text: "PQC 能力矩阵（√=实测支持）", left: "center", textStyle: { fontSize: 14 } },
-  tooltip: {},
-  legend: { bottom: 0 },
+  tooltip: {}, legend: { bottom: 0 },
   radar: {
     indicator: [
       { name: "混合KEX\nX25519MLKEM768", max: 1 },
@@ -99,17 +617,13 @@ chartCapability.setOption({
       { name: "跨栈\n互操作", max: 1 },
       { name: "向后\n兼容回退", max: 1 },
       { name: "零第三方\n依赖", max: 1 }
-    ],
-    radius: "62%"
+    ], radius: "62%"
   },
-  series: [{
-    type: "radar",
-    data: [
-      { name: "方案A", value: [1,0,0,0,1,1], areaStyle: { opacity:.15 }, lineStyle: { color: "#2563eb" } },
-      { name: "方案B", value: [1,1,1,1,1,0], areaStyle: { opacity:.15 }, lineStyle: { color: "#16a34a" } },
-      { name: "方案C", value: [1,1,1,1,1,0], areaStyle: { opacity:.15 }, lineStyle: { color: "#d97706" } }
-    ]
-  }]
+  series: [{ type: "radar", data: [
+    { name: "方案A", value: [1,0,0,0,1,1], areaStyle: { opacity:.15 }, lineStyle: { color: "#2563eb" } },
+    { name: "方案B", value: [1,1,1,1,1,0], areaStyle: { opacity:.15 }, lineStyle: { color: "#16a34a" } },
+    { name: "方案C", value: [1,1,1,1,1,0], areaStyle: { opacity:.15 }, lineStyle: { color: "#d97706" } }
+  ]}]
 });
 
 const chartTiming = echarts.init(document.getElementById("chartTiming"));
@@ -121,21 +635,65 @@ const timings = [
   { name: "C·回退x25519", v: 65 }, { name: "C·回退BC", v: 66 }, { name: "C·生产默认", v: 37 }
 ];
 chartTiming.setOption({
-  title: { text: "正向/互操作/回退场景握手+请求总耗时（ms，受 JIT/负载影响，仅参考）", left: "center", textStyle: { fontSize: 14 } },
+  title: { text: "正向/互操作/回退场景握手+请求总耗时（ms，仅参考）", left: "center", textStyle: { fontSize: 14 } },
   tooltip: { trigger: "axis" },
   xAxis: { type: "category", data: timings.map(t => t.name) },
   yAxis: { type: "value", name: "ms" },
   series: [{ type: "bar", data: timings.map(t => t.v), itemStyle: { color: ACCENT }, label: { show: true, position: "top" } }]
 });
 
-window.addEventListener("resize", () => { chartPassFail.resize(); chartCapability.resize(); chartTiming.resize(); });
+// ---- 方案级饼图/能力图 ----
+function pie(id, label, pass, fail) {
+  const c = echarts.init(document.getElementById(id));
+  c.setOption({
+    title: { text: label, left: "center", textStyle: { fontSize: 13 } },
+    tooltip: { trigger: "item" },
+    series: [{ type: "pie", radius: ["40%","68%"], center: ["50%","58%"],
+      label: { formatter: "{b}: {c}" },
+      data: [ { name: "PASS", value: pass, itemStyle: { color: PASS_COL } },
+              { name: "断点(预期失败)", value: fail, itemStyle: { color: FAIL_COL } } ] }]
+  });
+  return c;
+}
+function capBar(id, label, rows) {
+  const c = echarts.init(document.getElementById(id));
+  c.setOption({
+    title: { text: label, left: "center", textStyle: { fontSize: 13 } },
+    tooltip: { trigger: "axis" },
+    grid: { left: 90, right: 30, top: 36, bottom: 20 },
+    xAxis: { type: "value", max: 1, splitLine: { show: false } },
+    yAxis: { type: "category", data: rows.map(r => r[0]) },
+    series: [{ type: "bar", data: rows.map(r => r[1]),
+      itemStyle: { color: p => p.value ? "#16a34a" : "#e2e8f0" }, label: { show: true, formatter: p => p.value ? "✓" : "✗" } }]
+  });
+  return c;
+}
+const pieA = pie("pieA", "方案A 结果", 1, 3);
+const capA = capBar("capA", "方案A 能力", [
+  ["混合KEX X25519MLKEM768",1],["纯 ML-KEM",0],["PQC 证书 ML-DSA",0],
+  ["跨栈互操作",0],["兼容回退",1],["零第三方依赖",1]
+]);
+const pieB = pie("pieB", "方案B 结果", 4, 3);
+const capB = capBar("capB", "方案B 能力", [
+  ["混合KEX X25519MLKEM768",1],["纯 ML-KEM",1],["PQC 证书 ML-DSA",1],
+  ["跨栈互操作",1],["兼容回退",1],["零第三方依赖",0]
+]);
+const pieC = pie("pieC", "方案C 结果", 5, 1);
+const capC = capBar("capC", "方案C 能力", [
+  ["混合KEX X25519MLKEM768",1],["纯 ML-KEM",1],["PQC 证书 ML-DSA",1],
+  ["跨栈互操作",1],["兼容回退",1],["零第三方依赖",0]
+]);
+
+window.addEventListener("resize", () => {
+  [chartPassFail, chartCapability, chartTiming, pieA, capA, pieB, capB, pieC, capC].forEach(c => c.resize());
+});
 </script>
 
 <div class="sub" style="margin-top:24px">
-  说明：FAIL 均为<b>预期失败的断点验证</b>；耗时非性能基准；详细改造点/断点分析见
-  <a href="方案A-JDK内置-迁移测试报告.md">方案A</a> /
-  <a href="方案B-BouncyCastle-迁移测试报告.md">方案B</a> /
-  <a href="方案C-混合式-迁移测试报告.md">方案C</a> 报告。
+  详细报告：<a href="方案A-JDK内置-迁移测试报告.md">方案A</a> ·
+  <a href="方案B-BouncyCastle-迁移测试报告.md">方案B</a> ·
+  <a href="方案C-混合式-迁移测试报告.md">方案C</a> ·
+  总览 <a href="../README.md">README</a>
 </div>
 </body>
 </html>
