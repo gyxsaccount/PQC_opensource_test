@@ -134,6 +134,31 @@ foreach ($cat in @("kex","hostkey","cipher","mac")) {
 [void]$h.AppendLine("</ol>")
 [void]$h.AppendLine("<p class='note'>自实现代码: <code>self_implemented/hybrid_kex.c</code>, <code>hybrid_signature.c</code>, <code>libssh2_pq.patch</code> | 版本清单: VERSION_MATRIX.md</p>")
 
+# ---- 代码修改点 ----
+[void]$h.AppendLine("<h2>代码修改点（具体位置 + 高亮）</h2>")
+[void]$h.AppendLine("<p class='note'>基于 libssh2 1.11.0 源码实测行号。完整 diff 见 <code>results/code_modification_points.md</code> 与 <code>self_implemented/libssh2_pq.patch</code></p>")
+[void]$h.AppendLine("<table><tr><th>文件</th><th>行号</th><th>修改类型</th><th>用途</th></tr>")
+[void]$h.AppendLine("<tr><td><code>src/kex.c</code></td><td><strong>L3040-3059</strong></td><td>新增算法条目</td><td>注册 <code>mlkem768x25519-sha256</code> / <code>sntrup761x25519-sha512</code></td></tr>")
+[void]$h.AppendLine("<tr><td><code>src/kex.h</code></td><td>新增</td><td>函数声明</td><td>声明混合 KEX 实现函数</td></tr>")
+[void]$h.AppendLine("<tr><td><code>src/hostkey.c</code></td><td><strong>L1275-1302</strong></td><td>新增算法条目</td><td>注册 <code>ssh-ed25519+ml-dsa-44</code> 混合主机密钥</td></tr>")
+[void]$h.AppendLine("<tr><td><code>src/transport.c</code></td><td>协商逻辑</td><td>修改</td><td>混合算法优先匹配 + 经典回退</td></tr>")
+[void]$h.AppendLine("<tr><td><code>src/openssl.h</code></td><td><strong>L395-397</strong></td><td>新增类型映射</td><td>桥接 OpenSSL 3.5 EVP_PKEY</td></tr>")
+[void]$h.AppendLine("<tr><td><code>CMakeLists.txt</code></td><td><strong>L281-303</strong></td><td>新增选项</td><td><code>ENABLE_POST_QUANTUM</code> + OpenSSL 3.5 检测</td></tr>")
+[void]$h.AppendLine("<tr><td><code>self_implemented/hybrid_kex.c</code></td><td>全文件</td><td>新增</td><td>ML-KEM-768 + X25519 混合 KEX</td></tr>")
+[void]$h.AppendLine("<tr><td><code>self_implemented/hybrid_signature.c</code></td><td>全文件</td><td>新增</td><td>ML-DSA-44 + Ed25519 混合签名</td></tr>")
+[void]$h.AppendLine("</table>")
+
+[void]$h.AppendLine("<div class='card'><strong>高亮示例 1:</strong> <code>src/kex.c</code> L3040-3059 KEX 算法表插入点（置顶优先）<br>")
+[void]$h.AppendLine("<pre style='background:#263238;color:#d6e6f0;padding:10px;border-radius:4px;overflow-x:auto;font-size:12px;'><span style='color:#8c9eff;'> static const LIBSSH2_KEX_METHOD *libssh2_kex_methods[] = {</span><br><span style='color:#ff8a80;'>+#if LIBSSH2_POST_QUANTUM</span><br><span style='color:#ff8a80;'>+    &amp;kex_method_mlkem768x25519_sha256,   /* NEW: ML-KEM-768 + X25519 */</span><br><span style='color:#ff8a80;'>+    &amp;kex_method_sntrup761x25519_sha512,  /* NEW: NTRU Prime + X25519 */</span><br><span style='color:#ff8a80;'>+#endif</span><br><span style='color:#d6e6f0;'> #if LIBSSH2_ED25519</span><br><span style='color:#d6e6f0;'>     &amp;kex_method_ssh_curve25519_sha256,   /* 经典算法保留尾部 = 回退 */</span></pre></div>")
+
+[void]$h.AppendLine("<div class='card'><strong>高亮示例 2:</strong> <code>src/hostkey.c</code> L1275-1302 主机密钥表插入点<br>")
+[void]$h.AppendLine("<pre style='background:#263238;color:#d6e6f0;padding:10px;border-radius:4px;overflow-x:auto;font-size:12px;'><span style='color:#8c9eff;'> static const LIBSSH2_HOSTKEY_METHOD *hostkey_methods[] = {</span><br><span style='color:#ff8a80;'>+#if LIBSSH2_POST_QUANTUM</span><br><span style='color:#ff8a80;'>+    &amp;hostkey_method_ed25519_mldsa44,     /* NEW: Ed25519 + ML-DSA-44 */</span><br><span style='color:#ff8a80;'>+#endif</span><br><span style='color:#d6e6f0;'> #if LIBSSH2_ECDSA</span><br><span style='color:#d6e6f0;'>     &amp;hostkey_method_ecdsa_ssh_nistp256,</span></pre></div>")
+
+[void]$h.AppendLine("<div class='card'><strong>高亮示例 3:</strong> <code>CMakeLists.txt</code> L281-303 构建开关<br>")
+[void]$h.AppendLine("<pre style='background:#263238;color:#d6e6f0;padding:10px;border-radius:4px;overflow-x:auto;font-size:12px;'><span style='color:#ff8a80;'>+option(ENABLE_POST_QUANTUM &quot;Enable hybrid post-quantum algorithms (OpenSSL 3.5+)&quot; OFF)</span><br><span style='color:#8c9eff;'> if(CRYPTO_BACKEND STREQUAL &quot;OpenSSL&quot; OR NOT CRYPTO_BACKEND)</span><br><span style='color:#ff8a80;'>-    find_package(OpenSSL ${SPECIFIC_CRYPTO_REQUIREMENT})</span><br><span style='color:#ff8a80;'>+    if(ENABLE_POST_QUANTUM)</span><br><span style='color:#ff8a80;'>+        find_package(OpenSSL 3.5 REQUIRED)</span><br><span style='color:#ff8a80;'>+    else()</span><br><span style='color:#ff8a80;'>+        find_package(OpenSSL ${SPECIFIC_CRYPTO_REQUIREMENT})</span><br><span style='color:#ff8a80;'>+    endif()</span></pre></div>")
+
+[void]$h.AppendLine("<p class='note'>完整修改点与断点对应关系见 <code>results/code_modification_points.md</code> 第 9 节。</p>")
+
 [void]$h.AppendLine("</body></html>")
 
 # ---- 写入 ----

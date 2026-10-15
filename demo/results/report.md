@@ -52,4 +52,64 @@
 | self_implemented/hybrid_signature.c/.h | ML-DSA-44 + Ed25519 混合签名 |
 | self_implemented/libssh2_pq.patch | libssh2 集成补丁 |
 
+## 代码修改点（具体位置 + 高亮）
+
+> 以下为在 libssh2 **1.11.0 源码树**中定位的**具体修改点**，行号为实测行号。
+> 完整含 `diff` 高亮代码见 [code_modification_points.md](code_modification_points.md)。
+
+### 修改点总览
+
+| # | 文件 | 行号 | 修改类型 | 用途 |
+|---|---|---|---|---|
+| 1 | `src/kex.c` | **L3040-3059** | 新增算法条目 | 注册 `mlkem768x25519-sha256` / `sntrup761x25519-sha512` |
+| 2 | `src/kex.h` | 新增 | 新增函数声明 | 声明混合 KEX 实现函数 |
+| 3 | `src/hostkey.c` | **L1275-1302** | 新增算法条目 | 注册 `ssh-ed25519+ml-dsa-44` 混合主机密钥 |
+| 4 | `src/transport.c` | 协商逻辑 | 修改 | 混合算法优先匹配 + 经典回退 |
+| 5 | `src/openssl.h` | **L395-397** | 新增类型映射 | 桥接 OpenSSL 3.5 EVP_PKEY |
+| 6 | `CMakeLists.txt` | **L281-303** | 新增选项 | `ENABLE_POST_QUANTUM` + OpenSSL 3.5 检测 |
+| 7 | `self_implemented/hybrid_kex.c` | 全文件 | 新增 | 混合 KEX 实现 |
+| 8 | `self_implemented/hybrid_signature.c` | 全文件 | 新增 | 混合签名实现 |
+
+### 关键高亮示例
+
+**① src/kex.c:3040-3059 — KEX 算法表插入点（置顶优先）**
+
+```diff
+ static const LIBSSH2_KEX_METHOD *libssh2_kex_methods[] = {
++#if LIBSSH2_POST_QUANTUM
++    &kex_method_mlkem768x25519_sha256,   /* NEW: ML-KEM-768 + X25519 */
++    &kex_method_sntrup761x25519_sha512,  /* NEW: NTRU Prime + X25519 */
++#endif
+ #if LIBSSH2_ED25519
+     &kex_method_ssh_curve25519_sha256,   /* 经典算法保留尾部 = 回退 */
+```
+
+**② src/hostkey.c:1275-1302 — 主机密钥表插入点**
+
+```diff
+ static const LIBSSH2_HOSTKEY_METHOD *hostkey_methods[] = {
++#if LIBSSH2_POST_QUANTUM
++    &hostkey_method_ed25519_mldsa44,     /* NEW: Ed25519 + ML-DSA-44 */
++#endif
+ #if LIBSSH2_ECDSA
+     &hostkey_method_ecdsa_ssh_nistp256,
+```
+
+**③ CMakeLists.txt:281-303 — 构建开关**
+
+```diff
++option(ENABLE_POST_QUANTUM "Enable hybrid post-quantum algorithms (OpenSSL 3.5+)" OFF)
++
+ if(CRYPTO_BACKEND STREQUAL "OpenSSL" OR NOT CRYPTO_BACKEND)
+-    find_package(OpenSSL ${SPECIFIC_CRYPTO_REQUIREMENT})
++    if(ENABLE_POST_QUANTUM)
++        find_package(OpenSSL 3.5 REQUIRED)   /* 需要 ML-KEM/ML-DSA 原语 */
++    else()
++        find_package(OpenSSL ${SPECIFIC_CRYPTO_REQUIREMENT})
++    endif()
+```
+
+> 其余修改点（kex.h / transport.c / openssl.h / hybrid 实现）的完整
+> 高亮 diff 代码见 [code_modification_points.md](code_modification_points.md)。
+
 详见 VERSION_MATRIX.md(版本清单) 和 BREAKPOINTS.md(断点分析)。
