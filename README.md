@@ -68,7 +68,8 @@ powershell -ExecutionPolicy Bypass -File run-all.ps1
 | `logs/runA.log` | 方案A 结果 + JSSE 握手调试（TLS 群组/签名方案/告警） |
 | `logs/runB.log` | 方案B 结果 + 握手调试 |
 | `logs/runC.log` | 方案C 结果 + 握手调试 |
-| `reports/*.md` | 三份迁移测试报告（详见第 7 节） |
+| `reports/*.md` | 三份迁移测试报告：含**改造前/改造后代码对比**、Mermaid 可视化图、断点分析（详见第 7 节） |
+| `reports/dashboard.html` | **可视化仪表盘**（浏览器打开）：PASS/断点计数、PQC 能力雷达图、场景耗时柱状图 |
 
 也可单跑某个方案：
 ```powershell
@@ -114,6 +115,18 @@ java -Djavax.net.debug=ssl:handshake -cp "out;$cp" pqc.approachC.MainC
 服务端最终协商示例（方案A）：
 [服务端最后协商] pServer=TLSv1.3 / TLS_AES_256_GCM_SHA384 | mldsa=none | pOnly=none
 ```
+
+## 4.5 可视化报告
+
+每个方案报告内置 **Mermaid 可视化图**（GitHub 上直接渲染）：
+- **迁移前 → 迁移后架构图**：改造前后 TLS 握手链路对比
+- **结果饼图**：PASS / 断点占比
+
+另有汇总可视化仪表盘 **`reports/dashboard.html`**（浏览器打开，需联网加载 ECharts CDN）：
+- PASS / 断点计数柱状图
+- 三方案 **PQC 能力雷达图**（混合KEX / 纯ML-KEM / PQC证书 / 互操作 / 兼容回退 / 零依赖）
+- 各场景握手耗时柱状图
+- 全场景结果明细表
 
 ## 5. 严格性说明
 

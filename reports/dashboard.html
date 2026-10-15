@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HttpClient5 后量子(PQC)迁移测试 — 可视化报告</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<style>
+  :root { --ok:#16a34a; --bad:#dc2626; --warn:#d97706; --accent:#2563eb; --bg:#f8fafc; --card:#fff; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; background: var(--bg); color: #1e293b; padding: 24px; }
+  h1 { font-size: 26px; margin-bottom: 4px; }
+  .sub { color: #64748b; font-size: 14px; margin-bottom: 20px; }
+  h2 { font-size: 20px; margin: 28px 0 12px; border-left: 4px solid var(--accent); padding-left: 10px; }
+  .cards { display: flex; gap: 16px; flex-wrap: wrap; }
+  .card { background: var(--card); border-radius: 12px; padding: 18px 22px; flex: 1; min-width: 240px;
+          box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .card .name { font-size: 13px; color: #64748b; }
+  .card .big { font-size: 30px; font-weight: 700; margin-top: 4px; }
+  .card .meta { font-size: 13px; margin-top: 6px; color: #475569; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .ok { background:#dcfce7; color:#166534; } .bad { background:#fee2e2; color:#991b1b; }
+  .chart { background: var(--card); border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 12px; overflow: hidden;
+          box-shadow: 0 1px 3px rgba(0,0,0,.08); font-size: 13px; }
+  th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+  th { background: #f1f5f9; font-weight: 600; }
+  tr:last-child td { border-bottom: none; }
+  .tag { font-family: Consolas, monospace; font-size: 12px; background:#eef2ff; color:#3730a3; padding:1px 6px; border-radius:4px; }
+  @media (max-width: 900px) { .row { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<h1>HttpClient5 后量子（PQC）迁移测试 · 可视化报告</h1>
+<div class="sub">JDK 27 · HttpClient 5.6.4 · BouncyCastle 1.86 · 验证日期 2026-09-24</div>
+
+<h2>总览：三方案 PASS / 断点</h2>
+<div class="cards">
+  <div class="card"><div class="name">方案A · JDK 内置</div><div class="big">1 <span style="font-size:16px;color:#64748b">PASS</span></div>
+    <div class="meta">断点(预期失败) <b style="color:#dc2626">3</b> · 技术栈 SunJSSE</div></div>
+  <div class="card"><div class="name">方案B · BouncyCastle</div><div class="big">4 <span style="font-size:16px;color:#64748b">PASS</span></div>
+    <div class="meta">断点(预期失败) <b style="color:#dc2626">3</b> · 技术栈 BCJSSE</div></div>
+  <div class="card"><div class="name">方案C · 混合式（推荐）</div><div class="big">5 <span style="font-size:16px;color:#64748b">PASS</span></div>
+    <div class="meta">断点(预期失败) <b style="color:#dc2626">1</b> · 技术栈 JDK+BC 双栈</div></div>
+</div>
+
+<div class="row" style="margin-top:16px">
+  <div class="chart" id="chartPassFail" style="height:340px"></div>
+  <div class="chart" id="chartCapability" style="height:340px"></div>
+</div>
+
+<h2>各方案场景明细</h2>
+<table>
+  <tr><th>方案</th><th>场景</th><th>结果</th><th>HTTP</th><th>耗时</th><th>TLS 会话（协议 / 套件）</th></tr>
+  <tr><td rowspan="2"><b>A</b></td><td>正向：JDK↔JDK 混合密钥交换 X25519MLKEM768</td><td><span class="badge ok">PASS</span></td><td>200</td><td>115ms</td><td>TLSv1.3 / TLS_AES_256_GCM_SHA384</td></tr>
+  <tr><td>断点×3：ML-DSA 证书 / 无共同群组 / TLS1.2</td><td><span class="badge bad">FAIL(预期)</span></td><td>—</td><td>—</td><td>—</td></tr>
+  <tr><td rowspan="5"><b>B</b></td><td>正向：ML-DSA-65 证书 + 混合 X25519MLKEM768</td><td><span class="badge ok">PASS</span></td><td>200</td><td>156ms</td><td>TLSv1.3 / TLS_CHACHA20_POLY1305_SHA256</td></tr>
+  <tr><td>正向：ML-DSA-65 证书 + 纯 MLKEM768（JDK 无法做到）</td><td><span class="badge ok">PASS</span></td><td>200</td><td>12ms</td><td>TLSv1.3 / TLS_CHACHA20_POLY1305_SHA256</td></tr>
+  <tr><td>互操作：JDK 客户端 ↔ BC 服务端</td><td><span class="badge ok">PASS</span></td><td>200</td><td>48ms</td><td>TLSv1.3 / TLS_CHACHA20_POLY1305_SHA256</td></tr>
+  <tr><td>互操作：BC 客户端 ↔ JDK 服务端</td><td><span class="badge ok">PASS</span></td><td>200</td><td>27ms</td><td>TLSv1.3 / TLS_AES_256_GCM_SHA384</td></tr>
+  <tr><td>断点×3：JDK 无纯 MLKEM / JDK 强制 MLKEM768 / JDK↔ML-DSA 证书</td><td><span class="badge bad">FAIL(预期)</span></td><td>—</td><td>—</td><td>—</td></tr>
+  <tr><td rowspan="6"><b>C</b></td><td>互操作：JDK 客户端 ↔ BC 服务端</td><td><span class="badge ok">PASS</span></td><td>200</td><td>179ms</td><td>TLSv1.3 / TLS_CHACHA20_POLY1305_SHA256</td></tr>
+  <tr><td>互操作：BC 客户端 ↔ JDK 服务端</td><td><span class="badge ok">PASS</span></td><td>200</td><td>34ms</td><td>TLSv1.3 / TLS_AES_256_GCM_SHA384</td></tr>
+  <tr><td>回退：PQC 优先客户端 ↔ 传统 x25519 服务器</td><td><span class="badge ok">PASS</span></td><td>200</td><td>65ms</td><td>TLSv1.3 / TLS_AES_256_GCM_SHA384</td></tr>
+  <tr><td>回退：BC 客户端 ↔ 传统服务器</td><td><span class="badge ok">PASS</span></td><td>200</td><td>66ms</td><td>TLSv1.3 / TLS_AES_256_GCM_SHA384</td></tr>
+  <tr><td>正向：JDK↔JDK 生产默认</td><td><span class="badge ok">PASS</span></td><td>200</td><td>37ms</td><td>TLSv1.3 / TLS_AES_256_GCM_SHA384</td></tr>
+  <tr><td>断点：未迁移客户端 ↔ PQC-only 服务器</td><td><span class="badge bad">FAIL(预期)</span></td><td>—</td><td>—</td><td>—</td></tr>
+</table>
+
+<h2>正向场景握手耗时（ms）</h2>
+<div class="chart" id="chartTiming" style="height:360px"></div>
+
+<script>
+const PASS_COL = "#16a34a", FAIL_COL = "#dc2626", ACCENT = "#2563eb";
+const chartPassFail = echarts.init(document.getElementById("chartPassFail"));
+chartPassFail.setOption({
+  title: { text: "PASS / 断点(预期失败) 计数", left: "center", textStyle: { fontSize: 14 } },
+  tooltip: { trigger: "axis" },
+  legend: { bottom: 0, data: ["PASS", "断点(预期失败)"] },
+  xAxis: { type: "category", data: ["方案A\nJDK内置", "方案B\nBouncyCastle", "方案C\n混合式"] },
+  yAxis: { type: "value", minInterval: 1 },
+  series: [
+    { name: "PASS", type: "bar", data: [1,4,5], itemStyle: { color: PASS_COL }, barWidth: 40 },
+    { name: "断点(预期失败)", type: "bar", data: [3,3,1], itemStyle: { color: FAIL_COL }, barWidth: 40 }
+  ]
+});
+
+const chartCapability = echarts.init(document.getElementById("chartCapability"));
+chartCapability.setOption({
+  title: { text: "PQC 能力矩阵（√=实测支持）", left: "center", textStyle: { fontSize: 14 } },
+  tooltip: {},
+  legend: { bottom: 0 },
+  radar: {
+    indicator: [
+      { name: "混合KEX\nX25519MLKEM768", max: 1 },
+      { name: "纯ML-KEM\nMLKEM768", max: 1 },
+      { name: "PQC证书\nML-DSA-65", max: 1 },
+      { name: "跨栈\n互操作", max: 1 },
+      { name: "向后\n兼容回退", max: 1 },
+      { name: "零第三方\n依赖", max: 1 }
+    ],
+    radius: "62%"
+  },
+  series: [{
+    type: "radar",
+    data: [
+      { name: "方案A", value: [1,0,0,0,1,1], areaStyle: { opacity:.15 }, lineStyle: { color: "#2563eb" } },
+      { name: "方案B", value: [1,1,1,1,1,0], areaStyle: { opacity:.15 }, lineStyle: { color: "#16a34a" } },
+      { name: "方案C", value: [1,1,1,1,1,0], areaStyle: { opacity:.15 }, lineStyle: { color: "#d97706" } }
+    ]
+  }]
+});
+
+const chartTiming = echarts.init(document.getElementById("chartTiming"));
+const timings = [
+  { name: "A·JDK↔JDK", v: 115 },
+  { name: "B·混合KEX", v: 156 }, { name: "B·纯MLKEM", v: 12 },
+  { name: "B·JDK→BC", v: 48 }, { name: "B·BC→JDK", v: 27 },
+  { name: "C·JDK→BC", v: 179 }, { name: "C·BC→JDK", v: 34 },
+  { name: "C·回退x25519", v: 65 }, { name: "C·回退BC", v: 66 }, { name: "C·生产默认", v: 37 }
+];
+chartTiming.setOption({
+  title: { text: "正向/互操作/回退场景握手+请求总耗时（ms，受 JIT/负载影响，仅参考）", left: "center", textStyle: { fontSize: 14 } },
+  tooltip: { trigger: "axis" },
+  xAxis: { type: "category", data: timings.map(t => t.name) },
+  yAxis: { type: "value", name: "ms" },
+  series: [{ type: "bar", data: timings.map(t => t.v), itemStyle: { color: ACCENT }, label: { show: true, position: "top" } }]
+});
+
+window.addEventListener("resize", () => { chartPassFail.resize(); chartCapability.resize(); chartTiming.resize(); });
+</script>
+
+<div class="sub" style="margin-top:24px">
+  说明：FAIL 均为<b>预期失败的断点验证</b>；耗时非性能基准；详细改造点/断点分析见
+  <a href="方案A-JDK内置-迁移测试报告.md">方案A</a> /
+  <a href="方案B-BouncyCastle-迁移测试报告.md">方案B</a> /
+  <a href="方案C-混合式-迁移测试报告.md">方案C</a> 报告。
+</div>
+</body>
+</html>
