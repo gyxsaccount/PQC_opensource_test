@@ -51,7 +51,22 @@ class PqcSslContextFactory extends SslContextFactory.Server {
 }
 ```
 
-**代码改造点**:
+**代码改造点** (改造前 → 改造后, `+` 新增 / `-` 删除):
+```java
+// 改造前: 默认 ECDHE, 未指定 PQC 组
+class ServerSslCtxFactory extends SslContextFactory.Server {
+    @Override
+    public SSLParameters customize(SSLParameters p) { return super.customize(p); }
+}
+// 改造后: 覆写 customize() 强制 PQC 混合组
+class PqcSslContextFactory extends SslContextFactory.Server {
++   @Override
++   public SSLParameters customize(SSLParameters p) {
++       p.setNamedGroups(new String[]{"X25519MLKEM768", "x25519", "secp256r1"});
++       return super.customize(p);
++   }
+}
+```
 - 改造类: `SslContextFactory.Server` / `SslContextFactory.Client` (jetty-util)
 - 关键 API: `SSLParameters.setNamedGroups(String[])` (JDK 27 公开; JDK 24-26 用反射/BC BCTLS)
 - 服务器装配: `new ServerConnector(server, new SslConnectionFactory(ssl, "http/1.1"), new HttpConnectionFactory(https))`
@@ -87,8 +102,15 @@ TLS signature schemes: [ecdsa_*, ed25519, rsa_pss_*, ...]   // 共18个, 无任�
 
 **代码改造点**:
 - 证书生成: `keytool -genkeypair -keyalg ML-DSA -groupname ML-DSA-65 ...` (JDK 27)
-- 加载: `SslContextFactory.setKeyStorePath("etc/mldsa.p12")` — ✅ 成功
+- 加载 (改造点, 可行):
+```java
+SslContextFactory.Server ssl = new SslContextFactory.Server();
++ ssl.setKeyStorePath("etc/mldsa.p12");   // ★ 改造点: 证书换成 ML-DSA
+ssl.setKeyStorePassword("changeit");
+ssl.start();   // ✅ 加载成功, 但真实握手在此之后失败
+```
 - **阻断定位**: `SSLParameters.getSignatureSchemes()` 仅 18 种经典方案; `sun.security.ssl` 硬编码, 不经 Provider 扩展
+  - 目标改造点 (待 JSSE 支持): `signature_algorithms` 期望出现 `ML-DSA-44 / ML-DSA-65 / ML-DSA-87`
 - 跟踪: JDK-8332706 (ML-DSA TLS), IETF LAMPS draft-ietf-lamps-dilithium-certificates
 
 **过渡期方案**: 保持 EC/RSA 证书签名 + X25519MLKEM768 混合密钥交换(已达 CNSA 2.0 第一阶段); 证书签名迁移等待 JSSE 支持 ML-DSA 或采用混合证书。
@@ -108,11 +130,22 @@ Digest 认证请求 -> 200 (OK)
 
 **结论**: Jetty 12 `DigestAuthenticator` 默认算法已为 **SHA-256 (RFC 7616)**; 摘要长度从 MD5 的 32 hex 增至 64 hex (32 字节), 认证链路完整可用。
 
-**代码改造点**:
+**代码改造点** (改造前 → 改造后):
+```java
+// 改造前: 算法未显式指定 (旧版默认 MD5) + 凭证存 MD5 哈希
+DigestAuthenticator digest = new DigestAuthenticator();
+- // 旧: 未显式指定算法, 挑战头 algorithm=MD5
+UserStore us = new UserStore();
+- us.addUser("alice", Credential.getCredential("MD5:" + md5Hex), roles);
+
+// 改造后: 显式 SHA-256 + 明文凭证由 Jetty 计算 HA1
+DigestAuthenticator digest = new DigestAuthenticator();
++ digest.setAlgorithm("SHA-256");                        // ★ 关键: RFC 7616
+UserStore us = new UserStore();
++ us.addUser("alice", Credential.getCredential("password"), roles);   // ★ 关键: 存明文, 由 Digest.check() 计算 HA1
+```
 - 改造类: `ConstraintSecurityHandler` + `DigestAuthenticator` (jetty-ee10-servlet)
 - API 差异: Jetty 12 的 `Constraint` 为接口, 用 `new Constraint.Builder().name("digest").roles("user").build()`
-- 算法: `digest.setAlgorithm("SHA-256")` (默认已是)
-- 用户凭证: `UserStore.addUser("alice", Credential.getCredential("password"), roles)` — 存明文, 由 `Digest.check()` 计算 HA1
 
 ### 3.4 迁移点4: 口令哈希/Realm → SHA2/SHA3 ✅
 
@@ -125,13 +158,20 @@ MD:SHA3-256:c0067d4a... -> MD [OK]   校验正确密码: true, 校验错误密�
 ```
 - 摘要长度增长: SHA-256→SHA3-256 无增长 (64 hex), SHA-384/SHA3-384 +50%, 需评估存储字段。
 
-**代码改造点**:
+**代码改造点** (改造前 → 改造后):
+```java
+// 改造前 (弱哈希, 量子不安全):
+- Credential md5  = Credential.getCredential("MD5:" + md5Hex);    // 128-bit
+- Credential sha1 = Credential.getCredential("SHA-1:" + sha1Hex); // 160-bit
+// 改造后 (SHA3 系, CNSA 2.0 推荐):
++ Credential c1 = Credential.getCredential("MD:SHA-256:" + sha256Hex);
++ Credential c2 = Credential.getCredential("MD:SHA3-256:" + sha3Hex);   // ★ 256-bit SHA3
++ Credential c3 = Credential.getCredential("MD:SHA3-512:" + sha3_512Hex);
+// 校验链路完全不变:
+boolean ok = c2.check("password");   // → true (实测通过)
+boolean bad = c2.check("wrong");     // → false (实测通过)
+```
 - 改造类: `org.eclipse.jetty.util.security.Credential` / `Password`
-- 凭证前缀切换 (调用方代码不变):
-  ```java
-  // 迁移前 (弱):  Credential.getCredential("MD5:" + md5hex)
-  // 迁移后 (PQC): Credential.getCredential("MD:SHA3-256:" + sha3hex)   // 实测 check=true/false
-  ```
 - Realm 文件格式: `alice: MD:SHA3-256:<64hex>, user`
 - 需评估: 摘要长度增长对 DB 字段影响 (SHA3-384 +50%, SHA3-512 +100%)
 
@@ -143,9 +183,25 @@ MD:SHA3-256:c0067d4a... -> MD [OK]   校验正确密码: true, 校验错误密�
 - Jetty 会话 ID: 31 hex 字符 ≈ **124 bits 熵**, 10000 次生成 0 重复
 - **建议**: 会话 ID 熵略低于 128 bits, 建议提高随机字节数至 16+; 开启 HttpOnly/Secure/SameSite
 
-**代码改造点**:
+**代码改造点** (改造前 → 改造后):
+```java
+// 改造前: 默认随机源 + 会话 ID ~124 bits
+DefaultSessionIdManager idMgr = new DefaultSessionIdManager(server);
+- // 旧: 未指定随机源 / workerName
+// 改造后: 显式 DRBG + 分实例标识
++ idMgr.setRandom(new SecureRandom());    // ★ 关键: JDK 27 默认 DRBG (CSPRNG)
++ idMgr.setWorkerName("node1");           // 分布式多实例需区分
+server.addBean(idMgr);
+
+// 会话 Cookie (jetty.xml): 改造前 false → 改造后全开
+- <Set name="httpOnly">false</Set>
+- <Set name="secure">false</Set>
++ <Set name="httpOnly">true</Set>
++ <Set name="secure">true</Set>
++ <Set name="sameSite">Strict</Set>
+```
 - 熵增强: `DefaultSessionIdManager.setRandom(new SecureRandom())` (JDK 27 默认 DRBG)
-- 会话 Cookie: jetty.xml 配置 `SessionCookieConfig` httpOnly=true / secure=true / sameSite=Strict
+- 生产建议: 会话 ID ≥ 32 hex 字符 (≥128 bits 熵)
 - 无算法阻断, 仅配置级改造
 
 ### 3.6 迁移点6: OIDC/JWT ⚠️ 依赖 IETF
@@ -159,7 +215,19 @@ ML-DSA-44 -> 不可用   ML-DSA-65 -> 不可用   ... => JOSE PQC 算法标准�
 ```
 - 近期方案: 提升经典强度 (RSA-3072+/P-384+, HS-384+), 待 JOSE PQC 标准落地后切换。
 
-**代码改造点**:
+**代码改造点** (改造前 → 改造后):
+```java
+// 改造前: RSA-2048 / P-256 (量子 Grover/Shor 可破)
+- RSAKey rsa = new RSAKeyGenerator(2048).generate();
+- ECKey  ec  = new ECKeyGenerator(Curve.P_256).generate();
+// 改造后: 提升至 RSA-3072+ / P-384+ / HS-384+
++ RSAKey rsa2 = new RSAKeyGenerator(3072).generate();    // 或 4096
++ ECKey  ec2  = new ECKeyGenerator(Curve.P_384).generate();
++ JWSHeader(JWSAlgorithm.parse("RS384"))                // ★ 关键: RS384 + RSA-3072
+
+// 待 JOSE PQC 标准落地后 (目标改造点):
++ JWSAlgorithm alg = JWSAlgorithm.parse("ML-DSA-65");   // ★ 当前实测抛 ParseException: Unsupported JWS algorithm
+```
 - 提升强度: `new RSAKeyGenerator(3072)`, `new ECKeyGenerator(Curve.P_384)`, 算法 RS384/ES384
 - 待 JOSE PQC 落地: `JWSAlgorithm.parse("ML-DSA-65")` — 当前实测抛 `ParseException: Unsupported JWS algorithm`
 
@@ -179,7 +247,23 @@ Jetty HttpClient + 自定义 `SslContextFactory.Client`, 与迁移点1 相同的
 JDK TLS named groups 首位: X25519MLKEM768, PQC 混合组可用: true
 ```
 
-**代码改造点**:
+**代码改造点** (改造前 → 改造后):
+```java
+// 改造前: 仅 HTTP/1.1 连接器
+SslContextFactory.Server ssl = new SslContextFactory.Server();
+ssl.setKeyStorePath("etc/keystore.p12");
+- // 旧: ServerConnector(HTTP/1.1 over TCP) 即可, 无 QUIC 装配
+
+// 改造后: 新增 QUIC 配置 + HTTP/3 连接工厂 + QuicServerConnector
++ ServerQuicConfiguration quicConfig =
++     new ServerQuicConfiguration(ssl, Path.of("etc/quic-pems"));
++ quicConfig.setMaxBidirectionalRemoteStreams(1024);   // ★ 关键: QUIC 流配额
++ RawHTTP3ServerConnectionFactory http3 =
++     new RawHTTP3ServerConnectionFactory(quicConfig, sessionListener);
++ QuicServerConnector connector =
++     new QuicServerConnector(server, quicConfig, http3);
+server.addConnector(connector);
+```
 - 装配: `ServerQuicConfiguration(ssl, Path.of("etc/quic-pems"))` + `RawHTTP3ServerConnectionFactory` + `QuicServerConnector`
 - PQC named groups 复用迁移点1 的 `customize()` 覆写, 自动生效
 - 环境前置: 构建 `jetty-quiche-native` (Quiche 原生库, 不在 Maven Central) — 当前 Windows 阻断

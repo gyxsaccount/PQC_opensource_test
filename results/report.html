@@ -87,6 +87,14 @@
   .code .bad{color:#f87171}
   .code .warn{color:#fbbf24}
   .code .d{color:#22d3ee}
+  /* diff / highlight rows */
+  .code .add{display:block;background:rgba(34,197,94,.22);border-left:3px solid #22c55e;color:#4ade80}
+  .code .del{display:block;background:rgba(239,68,68,.18);border-left:3px solid #ef4444;color:#f87171;text-decoration:line-through}
+  .code .hl{display:block;background:rgba(250,204,21,.20);border-left:3px solid #facc15;color:#fde047}
+  .code .ctx{display:block}
+  .before,.after{font-size:11px;font-weight:700;letter-spacing:.5px;margin:12px 0 -8px;text-transform:uppercase}
+  .before{color:#f87171}
+  .after{color:#4ade80}
   .codehead{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);margin-top:12px;margin-bottom:2px}
   .codehead .file{background:var(--panel2);border:1px solid var(--border);border-radius:6px;padding:1px 8px;font-family:Consolas,monospace;color:#9fe8ff}
   .codehead .tag{background:rgba(99,102,241,.15);color:#a5b4fc;border-radius:6px;padding:1px 8px}
@@ -158,40 +166,42 @@
     </div>
     <div class="note ok">💡 JDK 27 SunJSSE 默认 named groups 首位即 X25519MLKEM768，生产环境直接升级 JDK 27+ 即自动获得混合 PQC 密钥交换。</div>
 
-    <h3 style="margin-top:16px">🔧 代码改造点</h3>
+    <h3 style="margin-top:16px">🔧 代码改造点（改造前 / 改造后）</h3>
     <div class="codehead"><span class="tag">迁移点1 · 服务器端</span><span class="file">src/JettyPqcServer.java</span><span>核心 API: <span class="mono">SSLParameters.setNamedGroups(String[])</span> (JDK 27 公开)</span></div>
+    <div class="before">▼ 改造前：默认 ECDHE，未指定 PQC 组</div>
     <div class="code">
-<span class="cm">// ① 覆写 SslContextFactory.customize(), 在握手前强制 PQC 混合组</span>
-<span class="kw">class</span> <span class="tp">PqcSslContextFactory</span> <span class="kw">extends</span> <span class="tp">SslContextFactory.Server</span> {
-    <span class="kw">@Override</span>
-    <span class="kw">public</span> <span class="tp">SSLParameters</span> <span class="fn">customize</span>(<span class="tp">SSLParameters</span> sslParams) {
-        sslParams.<span class="fn">setNamedGroups</span>(<span class="kw">new</span> <span class="tp">String</span>[]{<span class="st">"X25519MLKEM768"</span>, <span class="st">"x25519"</span>, <span class="st">"secp256r1"</span>});
-        <span class="kw">return</span> <span class="kw">super</span>.<span class="fn">customize</span>(sslParams);
-    }
-}
-
-<span class="cm">// ② 装配 HTTPS 连接器 (Jetty 12 core API)</span>
-<span class="tp">PqcSslContextFactory</span> ssl = <span class="kw">new</span> <span class="tp">PqcSslContextFactory</span>();
-ssl.<span class="fn">setKeyStorePath</span>(<span class="st">"etc/keystore.p12"</span>);
-ssl.<span class="fn">setKeyStorePassword</span>(<span class="st">"changeit"</span>);
-ssl.<span class="fn">setIncludeProtocols</span>(<span class="st">"TLSv1.3"</span>);
-
-<span class="tp">HttpConfiguration</span> https = <span class="kw">new</span> <span class="tp">HttpConfiguration</span>();
-https.<span class="fn">addCustomizer</span>(<span class="kw">new</span> <span class="tp">SecureRequestCustomizer</span>());
-<span class="tp">ServerConnector</span> connector = <span class="kw">new</span> <span class="tp">ServerConnector</span>(server,
-    <span class="kw">new</span> <span class="tp">SslConnectionFactory</span>(ssl, <span class="st">"http/1.1"</span>),
-    <span class="kw">new</span> <span class="tp">HttpConnectionFactory</span>(https));
+<span class="ctx"><span class="kw">class</span> <span class="tp">ServerSslCtxFactory</span> <span class="kw">extends</span> <span class="tp">SslContextFactory.Server</span> {</span>
+<span class="del">-    <span class="kw">@Override</span></span>
+<span class="del">-    <span class="kw">public</span> <span class="tp">SSLParameters</span> <span class="fn">customize</span>(<span class="tp">SSLParameters</span> p) { <span class="kw">return</span> <span class="kw">super</span>.<span class="fn">customize</span>(p); }</span>
+<span class="ctx">}</span>
+<span class="ctx">ssl.<span class="fn">setIncludeProtocols</span>(<span class="st">"TLSv1.3"</span>);  <span class="cm">// 密钥交换仍为 X25519</span></span>
+    </div>
+    <div class="after">▼ 改造后：覆写 customize() 强制 PQC 混合组（新增 2 行）</div>
+    <div class="code">
+<span class="ctx"><span class="kw">class</span> <span class="tp">PqcSslContextFactory</span> <span class="kw">extends</span> <span class="tp">SslContextFactory.Server</span> {</span>
+<span class="add">+    <span class="kw">@Override</span></span>
+<span class="add">+    <span class="kw">public</span> <span class="tp">SSLParameters</span> <span class="fn">customize</span>(<span class="tp">SSLParameters</span> p) {</span>
+<span class="add">+        p.<span class="fn">setNamedGroups</span>(<span class="kw">new</span> <span class="tp">String</span>[]{<span class="st">"X25519MLKEM768"</span>, <span class="st">"x25519"</span>, <span class="st">"secp256r1"</span>});</span>
+<span class="add">+        <span class="kw">return</span> <span class="kw">super</span>.<span class="fn">customize</span>(p);</span>
+<span class="add">+    }</span>
+<span class="ctx">}</span>
+<span class="ctx">ssl.<span class="fn">setIncludeProtocols</span>(<span class="st">"TLSv1.3"</span>);</span>
     </div>
     <div class="codehead"><span class="tag">迁移点7 · 客户端</span><span class="file">src/JettyPqcClient.java</span><span>Jetty HttpClient 出站 TLS</span></div>
+    <div class="before">▼ 改造前：HttpClient 默认 SslContextFactory（ECDHE）</div>
     <div class="code">
-<span class="cm">// 客户端同样覆写 SslContextFactory.Client, 出站 HTTPS 走 PQC 组</span>
-<span class="tp">PqcSslContextFactory</span> ssl = <span class="kw">new</span> <span class="tp">PqcSslContextFactory</span>(<span class="kw">new</span> <span class="tp">String</span>[]{<span class="st">"X25519MLKEM768"</span>}); <span class="cm">// 仅通告 PQC 组</span>
-ssl.<span class="fn">setTrustAll</span>(<span class="kw">true</span>);
-
-<span class="tp">HttpClient</span> client = <span class="kw">new</span> <span class="tp">HttpClient</span>(<span class="kw">new</span> <span class="tp">HttpClientTransportOverHTTP</span>());
-client.<span class="fn">setSslContextFactory</span>(ssl);   <span class="cm">// Jetty 12: 独立 setter (非构造参数)</span>
-client.<span class="fn">start</span>();
-<span class="tp">ContentResponse</span> resp = client.<span class="fn">newRequest</span>(<span class="st">"https://localhost:18443/hello"</span>).<span class="fn">send</span>();
+<span class="ctx"><span class="tp">HttpClient</span> client = <span class="kw">new</span> <span class="tp">HttpClient</span>();</span>
+<span class="ctx">client.<span class="fn">start</span>();</span>
+<span class="ctx"><span class="tp">ContentResponse</span> resp = client.<span class="fn">newRequest</span>(<span class="st">"https://host/hello"</span>).<span class="fn">send</span>();</span>
+    </div>
+    <div class="after">▼ 改造后：注入 PQC SslContextFactory.Client（新增 3 行）</div>
+    <div class="code">
+<span class="add">+ <span class="tp">PqcSslContextFactory</span> ssl = <span class="kw">new</span> <span class="tp">PqcSslContextFactory</span>(<span class="kw">new</span> <span class="tp">String</span>[]{<span class="st">"X25519MLKEM768"</span>});</span>
+<span class="add">+ ssl.<span class="fn">setTrustAll</span>(<span class="kw">true</span>);</span>
+<span class="ctx"><span class="tp">HttpClient</span> client = <span class="kw">new</span> <span class="tp">HttpClient</span>(<span class="kw">new</span> <span class="tp">HttpClientTransportOverHTTP</span>());</span>
+<span class="hl">▍client.<span class="fn">setSslContextFactory</span>(ssl);   <span class="cm">// ★ 关键：Jetty 12 独立 setter (非构造参数)</span></span>
+<span class="ctx">client.<span class="fn">start</span>();</span>
+<span class="ctx"><span class="tp">ContentResponse</span> resp = client.<span class="fn">newRequest</span>(<span class="st">"https://host/hello"</span>).<span class="fn">send</span>();</span>
     </div>
     <div class="note">💡 生产落地等价方式：<span class="mono">-Djdk.tls.namedGroups=X25519MLKEM768,x25519</span> 或 Jetty XML 的 <span class="mono">sslContextFactory</span> 配置；JDK 27 默认已含 PQC 组。</div>
   </div>
@@ -241,16 +251,18 @@ keytool -genkeypair -alias mldsa -keyalg <span class="ok">ML-DSA</span> -groupna
     </div>
     <div class="codehead"><span class="tag">② 加载进 Jetty (可行)</span><span class="file">MldsaCertBlockTest.java</span></div>
     <div class="code">
-<span class="tp">SslContextFactory.Server</span> ssl = <span class="kw">new</span> <span class="tp">SslContextFactory.Server</span>();
-ssl.<span class="fn">setKeyStorePath</span>(<span class="st">"etc/mldsa.p12"</span>);
-ssl.<span class="fn">setKeyStorePassword</span>(<span class="st">"changeit"</span>);
-ssl.<span class="fn">start</span>();   <span class="cm">// ✅ 加载成功, 但真实握手在此之后失败</span>
+<span class="ctx"><span class="tp">SslContextFactory.Server</span> ssl = <span class="kw">new</span> <span class="tp">SslContextFactory.Server</span>();</span>
+<span class="add">+ ssl.<span class="fn">setKeyStorePath</span>(<span class="st">"etc/mldsa.p12"</span>);   <span class="cm">// 改造点: 证书换成 ML-DSA</span></span>
+<span class="ctx">ssl.<span class="fn">setKeyStorePassword</span>(<span class="st">"changeit"</span>);</span>
+<span class="ctx">ssl.<span class="fn">start</span>();   <span class="cm">// ✅ 加载成功, 但真实握手在此之后失败</span></span>
     </div>
     <div class="codehead"><span class="tag">③ 阻断定位 (JSSE 层)</span><span class="file">SSLParameters.getSignatureSchemes()</span></div>
     <div class="code">
 <span class="cm">// JSSE 仅注册 18 种经典签名方案, 无 ML-DSA → 握手报错:</span>
 <span class="bad">SSLHandshakeException: (handshake_failure) No available authentication scheme</span>
 
+<span class="cm">// 目标改造点 (待 JSSE 支持): 期望 signature_algorithms 出现以下项</span>
+<span class="hl">▍ML-DSA-44 / ML-DSA-65 / ML-DSA-87   ← 当前 JSSE 不注册 (硬编码缺位)</span>
 <span class="cm">// 阻断根因: sun.security.ssl.signature_algorithms 扩展硬编码,</span>
 <span class="cm">//           不经 Provider/配置扩展。ML-DSA 原语(JEP 497)与 TLS 协议间存在"算法可用→协议不可用"鸿沟。</span>
 <span class="cm">// 跟踪: JDK-8332706 (ML-DSA TLS), IETF LAMPS draft-ietf-lamps-dilithium-certificates</span>
@@ -292,40 +304,37 @@ ssl.<span class="fn">start</span>();   <span class="cm">// ✅ 加载成功, 但
       </div>
     </div>
 
-    <h3 style="margin-top:16px">🔧 代码改造点</h3>
+    <h3 style="margin-top:16px">🔧 代码改造点（改造前 / 改造后）</h3>
     <div class="codehead"><span class="tag">迁移点3 · Digest 认证</span><span class="file">src/DigestAuthPqcTest.java</span><span>Jetty 12 默认即 SHA-256 (RFC 7616)</span></div>
+    <div class="before">▼ 改造前：算法未显式指定（旧版本默认 MD5）+ 凭证存 MD5 哈希</div>
     <div class="code">
-<span class="cm">// ① 装配 SecurityHandler + DigestAuthenticator</span>
-<span class="tp">ConstraintSecurityHandler</span> security = <span class="kw">new</span> <span class="tp">ConstraintSecurityHandler</span>();
-security.<span class="fn">setRealmName</span>(<span class="st">"pqc-realm"</span>);
-<span class="tp">DigestAuthenticator</span> digest = <span class="kw">new</span> <span class="tp">DigestAuthenticator</span>();
-digest.<span class="fn">setAlgorithm</span>(<span class="st">"SHA-256"</span>);        <span class="cm">// 显式指定 (默认已是)</span>
-security.<span class="fn">setAuthenticator</span>(digest);
-
-<span class="cm">// ② 约束映射: 保护 /*</span>
-<span class="tp">Constraint</span> constraint = <span class="kw">new</span> <span class="tp">Constraint.Builder</span>()   <span class="cm">// Jetty 12: Constraint 为接口, 用 Builder</span>
-        .<span class="fn">name</span>(<span class="st">"digest"</span>).<span class="fn">roles</span>(<span class="st">"user"</span>).<span class="fn">build</span>();
-<span class="tp">ConstraintMapping</span> m = <span class="kw">new</span> <span class="tp">ConstraintMapping</span>();
-m.<span class="fn">setConstraint</span>(constraint); m.<span class="fn">setPathSpec</span>(<span class="st">"/*"</span>);
-
-<span class="cm">// ③ 用户凭证: 存明文, 由 Digest.check() 计算 HA1 = H(user:realm:password)</span>
-<span class="tp">UserStore</span> us = <span class="kw">new</span> <span class="tp">UserStore</span>();
-us.<span class="fn">addUser</span>(<span class="st">"alice"</span>, <span class="tp">Credential</span>.<span class="fn">getCredential</span>(<span class="st">"password"</span>), <span class="kw">new</span> <span class="tp">String</span>[]{<span class="st">"user"</span>});
+<span class="ctx"><span class="tp">DigestAuthenticator</span> digest = <span class="kw">new</span> <span class="tp">DigestAuthenticator</span>();</span>
+<span class="del">-    <span class="cm">// 旧: 未显式指定算法, 挑战头 algorithm=MD5</span></span>
+<span class="ctx"><span class="tp">UserStore</span> us = <span class="kw">new</span> <span class="tp">UserStore</span>();</span>
+<span class="del">- us.<span class="fn">addUser</span>(<span class="st">"alice"</span>, <span class="tp">Credential</span>.<span class="fn">getCredential</span>(<span class="st">"MD5:"</span> + md5Hex), roles); <span class="cm">// 旧: MD5 摘要</span></span>
+    </div>
+    <div class="after">▼ 改造后：显式 SHA-256 + 明文凭证由 Jetty 计算 HA1（新增/修改 2 行）</div>
+    <div class="code">
+<span class="ctx"><span class="tp">DigestAuthenticator</span> digest = <span class="kw">new</span> <span class="tp">DigestAuthenticator</span>();</span>
+<span class="add">+ digest.<span class="fn">setAlgorithm</span>(<span class="st">"SHA-256"</span>);        <span class="cm">// ★ 关键: RFC 7616 SHA-256 (默认已是, 显式声明)</span></span>
+<span class="ctx">security.<span class="fn">setAuthenticator</span>(digest);</span>
+<span class="ctx"><span class="tp">UserStore</span> us = <span class="kw">new</span> <span class="tp">UserStore</span>();</span>
+<span class="hl">▍us.<span class="fn">addUser</span>(<span class="st">"alice"</span>, <span class="tp">Credential</span>.<span class="fn">getCredential</span>(<span class="st">"password"</span>), roles);  <span class="cm">// ★ 关键: 存明文, 由 Digest.check() 计算 HA1</span></span>
     </div>
     <div class="codehead"><span class="tag">迁移点4 · 口令哈希 (Realm)</span><span class="file">src/PasswordHashPqcTest.java</span><span>org.eclipse.jetty.util.security.Password / Credential</span></div>
+    <div class="before">▼ 改造前（弱哈希，量子不安全）</div>
     <div class="code">
-<span class="cm">// 迁移前 (弱哈希):</span>
-<span class="bad">Credential md5 = Credential.getCredential("MD5:" + md5hex);          // 128-bit, 量子不安全</span>
-<span class="bad">Credential sha1 = Credential.getCredential("SHA-1:" + sha1hex);       // 160-bit, 已弃用</span>
-
-<span class="cm">// 迁移后 (SHA3 系, 抗量子相关 / CNSA 2.0 推荐):</span>
-<span class="ok">Credential c1 = Credential.getCredential("MD:SHA-256:" + sha256hex);  // 256-bit</span>
-<span class="ok">Credential c2 = Credential.getCredential("MD:SHA3-256:" + sha3hex);   // 256-bit (SHA3)</span>
-<span class="ok">Credential c3 = Credential.getCredential("MD:SHA3-512:" + sha3_512hex); // 512-bit</span>
-
-<span class="cm">// 校验链路完全不变:</span>
-boolean ok = c2.<span class="fn">check</span>(<span class="st">"password"</span>);    <span class="cm">// → true (实测通过)</span>
-boolean bad = c2.<span class="fn">check</span>(<span class="st">"wrong"</span>);     <span class="cm">// → false (实测通过)</span>
+<span class="del">- <span class="tp">Credential</span> md5  = <span class="tp">Credential</span>.<span class="fn">getCredential</span>(<span class="st">"MD5:"</span> + md5Hex);     <span class="cm">// 128-bit</span></span>
+<span class="del">- <span class="tp">Credential</span> sha1 = <span class="tp">Credential</span>.<span class="fn">getCredential</span>(<span class="st">"SHA-1:"</span> + sha1Hex);    <span class="cm">// 160-bit</span></span>
+    </div>
+    <div class="after">▼ 改造后（SHA3 系，CNSA 2.0 推荐）</div>
+    <div class="code">
+<span class="add">+ <span class="tp">Credential</span> c1 = <span class="tp">Credential</span>.<span class="fn">getCredential</span>(<span class="st">"MD:SHA-256:"</span> + sha256Hex);   <span class="cm">// 256-bit</span></span>
+<span class="add">+ <span class="tp">Credential</span> c2 = <span class="tp">Credential</span>.<span class="fn">getCredential</span>(<span class="st">"MD:SHA3-256:"</span> + sha3Hex);    <span class="cm">// 256-bit SHA3 ★</span></span>
+<span class="add">+ <span class="tp">Credential</span> c3 = <span class="tp">Credential</span>.<span class="fn">getCredential</span>(<span class="st">"MD:SHA3-512:"</span> + sha3_512Hex); <span class="cm">// 512-bit SHA3</span></span>
+<span class="ctx"><span class="cm">// 校验链路完全不变:</span></span>
+<span class="ctx">boolean ok = c2.<span class="fn">check</span>(<span class="st">"password"</span>);   <span class="cm">// → true (实测通过)</span></span>
+<span class="ctx">boolean bad = c2.<span class="fn">check</span>(<span class="st">"wrong"</span>);    <span class="cm">// → false (实测通过)</span></span>
     </div>
     <div class="note">Realm 文件格式对应：<span class="mono">alice: MD:SHA3-256:&lt;64hex&gt;, user</span>；需同步评估摘要长度增长对 DB 字段的影响（SHA3-384 +50%、SHA3-512 +100%）。</div>
   </div>
@@ -352,29 +361,41 @@ boolean bad = c2.<span class="fn">check</span>(<span class="st">"wrong"</span>);
       </div>
     </div>
 
-    <h3 style="margin-top:16px">🔧 代码改造点</h3>
+    <h3 style="margin-top:16px">🔧 代码改造点（改造前 / 改造后）</h3>
     <div class="codehead"><span class="tag">① 会话 ID 熵增强</span><span class="file">src/SessionSecurityPqcTest.java</span><span>DefaultSessionIdManager + SecureRandom (DRBG)</span></div>
+    <div class="before">▼ 改造前：默认随机源 + 会话 ID ~124 bits</div>
     <div class="code">
-<span class="tp">DefaultSessionIdManager</span> idMgr = <span class="kw">new</span> <span class="tp">DefaultSessionIdManager</span>(server);
-idMgr.<span class="fn">setRandom</span>(<span class="kw">new</span> <span class="tp">SecureRandom</span>());   <span class="cm">// JDK 27 默认 DRBG (CSPRNG)</span>
-idMgr.<span class="fn">setWorkerName</span>(<span class="st">"node1"</span>);          <span class="cm">// 分布式多实例需区分</span>
-server.<span class="fn">addBean</span>(idMgr);
-<span class="cm">// 建议: 生产上确保会话 ID ≥ 32 hex 字符 (≥128 bits 熵)</span>
+<span class="ctx"><span class="tp">DefaultSessionIdManager</span> idMgr = <span class="kw">new</span> <span class="tp">DefaultSessionIdManager</span>(server);</span>
+<span class="ctx">server.<span class="fn">addBean</span>(idMgr);</span>
+<span class="del">-    <span class="cm">// 旧: 未指定随机源 / workerName</span></span>
+    </div>
+    <div class="after">▼ 改造后：显式 DRBG + 分实例标识（新增 2 行）</div>
+    <div class="code">
+<span class="ctx"><span class="tp">DefaultSessionIdManager</span> idMgr = <span class="kw">new</span> <span class="tp">DefaultSessionIdManager</span>(server);</span>
+<span class="add">+ idMgr.<span class="fn">setRandom</span>(<span class="kw">new</span> <span class="tp">SecureRandom</span>());   <span class="cm">// ★ 关键: JDK 27 默认 DRBG (CSPRNG)</span></span>
+<span class="add">+ idMgr.<span class="fn">setWorkerName</span>(<span class="st">"node1"</span>);          <span class="cm">// 分布式多实例需区分</span></span>
+<span class="ctx">server.<span class="fn">addBean</span>(idMgr);</span>
+<span class="hl">▍<span class="cm">// ★ 建议: 生产确保会话 ID ≥ 32 hex 字符 (≥128 bits 熵)</span></span>
     </div>
     <div class="codehead"><span class="tag">② 会话 Cookie 安全属性</span><span class="file">jetty.xml / ServletContextHandler</span></div>
+    <div class="before">▼ 改造前：Cookie 默认未设安全属性</div>
     <div class="code">
-<span class="cm">// jetty.xml (ContextHandler):</span>
-&lt;Set name=<span class="st">"context"</span>&gt;
-  &lt;Get name=<span class="st">"sessionHandler"</span>&gt;
-    &lt;Set name=<span class="st">"sessionCookieConfig"</span>&gt;
-      &lt;New id=<span class="st">"cfg"</span> class=<span class="st">"org.eclipse.jetty.server.session.SessionCookieConfig"</span>&gt;
-        &lt;Set name=<span class="st">"httpOnly"</span>&gt;<span class="ok">true</span>&lt;/Set&gt;
-        &lt;Set name=<span class="st">"secure"</span>&gt;<span class="ok">true</span>&lt;/Set&gt;
-        &lt;Set name=<span class="st">"sameSite"</span>&gt;<span class="ok">Strict</span>&lt;/Set&gt;
-      &lt;/New&gt;
-    &lt;/Set&gt;
-  &lt;/Get&gt;
-&lt;/Set&gt;
+<span class="del">-    &lt;Set name=<span class="st">"httpOnly"</span>&gt;false&lt;/Set&gt;</span>
+<span class="del">-    &lt;Set name=<span class="st">"secure"</span>&gt;false&lt;/Set&gt;</span>
+    </div>
+    <div class="after">▼ 改造后：HttpOnly / Secure / SameSite 全开（修改 3 行）</div>
+    <div class="code">
+<span class="ctx">&lt;Set name=<span class="st">"context"</span>&gt;</span>
+<span class="ctx">  &lt;Get name=<span class="st">"sessionHandler"</span>&gt;</span>
+<span class="ctx">    &lt;Set name=<span class="st">"sessionCookieConfig"</span>&gt;</span>
+<span class="ctx">      &lt;New id=<span class="st">"cfg"</span> class=<span class="st">"org.eclipse.jetty.server.session.SessionCookieConfig"</span>&gt;</span>
+<span class="add">+        &lt;Set name=<span class="st">"httpOnly"</span>&gt;<span class="ok">true</span>&lt;/Set&gt;</span>
+<span class="add">+        &lt;Set name=<span class="st">"secure"</span>&gt;<span class="ok">true</span>&lt;/Set&gt;</span>
+<span class="add">+        &lt;Set name=<span class="st">"sameSite"</span>&gt;<span class="ok">Strict</span>&lt;/Set&gt;</span>
+<span class="ctx">      &lt;/New&gt;</span>
+<span class="ctx">    &lt;/Set&gt;</span>
+<span class="ctx">  &lt;/Get&gt;</span>
+<span class="ctx">&lt;/Set&gt;</span>
     </div>
     <div class="note">结论：会话 ID 基于 SecureRandom (DRBG) 且唯一性验证通过，无算法阻断，仅需配置增强。</div>
   </div>
@@ -404,26 +425,25 @@ server.<span class="fn">addBean</span>(idMgr);
     </div>
     <div class="note">JOSE PQC 算法标准未定（IETF jose-pqc WG）。近期方案：提升经典强度（RSA-3072+/P-384+/HS-384+）；待标准落地后切换 ML-DSA。</div>
 
-    <h3 style="margin-top:16px">🔧 代码改造点</h3>
+    <h3 style="margin-top:16px">🔧 代码改造点（改造前 / 改造后）</h3>
     <div class="codehead"><span class="tag">① 提升经典强度 (标准落地前)</span><span class="file">src/OidcJwtPqcTest.java</span><span>nimbus-jose-jwt</span></div>
+    <div class="before">▼ 改造前：RSA-2048 / P-256（量子 Grover/Shor 可破）</div>
     <div class="code">
-<span class="cm">// 迁移前: RSA-2048 / P-256 (量子 Grover/Shor 可破)</span>
-<span class="tp">RSAKey</span> rsa = <span class="kw">new</span> <span class="tp">RSAKeyGenerator</span>(<span class="bad">2048</span>).<span class="fn">generate</span>();
-<span class="tp">ECKey</span> ec = <span class="kw">new</span> <span class="tp">ECKeyGenerator</span>(<span class="tp">Curve</span>.<span class="bad">P_256</span>).<span class="fn">generate</span>();
-
-<span class="cm">// 迁移后: 提升至 RSA-3072+/P-384+, HS-384+</span>
-<span class="tp">RSAKey</span> rsa2 = <span class="kw">new</span> <span class="tp">RSAKeyGenerator</span>(<span class="ok">3072</span>).<span class="fn">generate</span>();   <span class="cm">// 或 4096</span>
-<span class="tp">ECKey</span> ec2 = <span class="kw">new</span> <span class="tp">ECKeyGenerator</span>(<span class="tp">Curve</span>.<span class="ok">P_384</span>).<span class="fn">generate</span>();
-
-<span class="tp">JWSObject</span> jws = <span class="kw">new</span> <span class="tp">JWSObject</span>(
-    <span class="kw">new</span> <span class="tp">JWSHeader</span>(<span class="tp">JWSAlgorithm</span>.<span class="fn">parse</span>(<span class="st">"RS384"</span>)), payload);
-jws.<span class="fn">sign</span>(<span class="kw">new</span> <span class="tp">RSASSASigner</span>(rsa2));   <span class="cm">// RS384 + RSA-3072</span>
+<span class="del">- <span class="tp">RSAKey</span> rsa = <span class="kw">new</span> <span class="tp">RSAKeyGenerator</span>(<span class="bad">2048</span>).<span class="fn">generate</span>();</span>
+<span class="del">- <span class="tp">ECKey</span> ec  = <span class="kw">new</span> <span class="tp">ECKeyGenerator</span>(<span class="tp">Curve</span>.<span class="bad">P_256</span>).<span class="fn">generate</span>();</span>
+    </div>
+    <div class="after">▼ 改造后：提升至 RSA-3072+ / P-384+ / HS-384+（修改 2 行 + 算法）</div>
+    <div class="code">
+<span class="add">+ <span class="tp">RSAKey</span> rsa2 = <span class="kw">new</span> <span class="tp">RSAKeyGenerator</span>(<span class="ok">3072</span>).<span class="fn">generate</span>();    <span class="cm">// 或 4096</span></span>
+<span class="add">+ <span class="tp">ECKey</span> ec2  = <span class="kw">new</span> <span class="tp">ECKeyGenerator</span>(<span class="tp">Curve</span>.<span class="ok">P_384</span>).<span class="fn">generate</span>();</span>
+<span class="hl">▍<span class="tp">JWSHeader</span>(<span class="tp">JWSAlgorithm</span>.<span class="fn">parse</span>(<span class="st">"RS384"</span>))   <span class="cm">// ★ 关键: RS384 + RSA-3072</span></span>
+<span class="ctx">jws.<span class="fn">sign</span>(<span class="kw">new</span> <span class="tp">RSASSASigner</span>(rsa2));</span>
     </div>
     <div class="codehead"><span class="tag">② 待 JOSE PQC 标准落地后</span><span class="file">JWSAlgorithm.parse()</span><span>当前全部抛异常 (实测)</span></div>
     <div class="code">
 <span class="cm">// JOSE PQC 草案 (draft-ietf-jose-pqc) 落地后切换:</span>
 <span class="kw">try</span> {
-    <span class="tp">JWSAlgorithm</span> alg = <span class="tp">JWSAlgorithm</span>.<span class="fn">parse</span>(<span class="st">"ML-DSA-65"</span>);   <span class="cm">// 当前: 不可用</span>
+<span class="hl">▍    <span class="tp">JWSAlgorithm</span> alg = <span class="tp">JWSAlgorithm</span>.<span class="fn">parse</span>(<span class="st">"ML-DSA-65"</span>);   <span class="cm">// ★ 目标改造点: 当前不可用</span></span>
 } <span class="kw">catch</span> (<span class="tp">Exception</span> e) {
     <span class="cm">// java.text.ParseException: Unsupported JWS algorithm</span>
 }
@@ -452,23 +472,28 @@ jws.<span class="fn">sign</span>(<span class="kw">new</span> <span class="tp">RS
       </div>
     </div>
 
-    <h3 style="margin-top:16px">🔧 代码改造点</h3>
+    <h3 style="margin-top:16px">🔧 代码改造点（改造前 / 改造后）</h3>
     <div class="codehead"><span class="tag">① 装配 HTTP/3 连接器</span><span class="file">参考 Jetty 12 编程指南</span><span>org.eclipse.jetty.http3.* + org.eclipse.jetty.quic.server.*</span></div>
+    <div class="before">▼ 改造前：仅 HTTP/1.1 连接器</div>
     <div class="code">
-<span class="cm">// HTTP/3 基于 UDP/QUIC, 复用同一 SslContextFactory (TLS 1.3)</span>
-<span class="tp">SslContextFactory.Server</span> ssl = <span class="kw">new</span> <span class="tp">SslContextFactory.Server</span>();
-ssl.<span class="fn">setKeyStorePath</span>(<span class="st">"etc/keystore.p12"</span>);
+<span class="ctx"><span class="tp">SslContextFactory.Server</span> ssl = <span class="kw">new</span> <span class="tp">SslContextFactory.Server</span>();</span>
+<span class="ctx">ssl.<span class="fn">setKeyStorePath</span>(<span class="st">"etc/keystore.p12"</span>);</span>
+<span class="del">-    <span class="cm">// 旧: ServerConnector(HTTP/1.1 over TCP) 即可, 无 QUIC 装配</span></span>
+    </div>
+    <div class="after">▼ 改造后：新增 QUIC 配置 + HTTP/3 连接工厂 + QuicServerConnector（新增 5 行）</div>
+    <div class="code">
+<span class="ctx"><span class="tp">SslContextFactory.Server</span> ssl = <span class="kw">new</span> <span class="tp">SslContextFactory.Server</span>();</span>
+<span class="ctx">ssl.<span class="fn">setKeyStorePath</span>(<span class="st">"etc/keystore.p12"</span>);</span>
 <span class="cm">// PQC named groups 与迁移点1 相同的 customize() 覆写自动生效</span>
 
-<span class="tp">ServerQuicConfiguration</span> quicConfig =
-    <span class="kw">new</span> <span class="tp">ServerQuicConfiguration</span>(ssl, <span class="tp">Path</span>.<span class="fn">of</span>(<span class="st">"etc/quic-pems"</span>));
-quicConfig.<span class="fn">setMaxBidirectionalRemoteStreams</span>(1024);
-
-<span class="tp">RawHTTP3ServerConnectionFactory</span> http3 =
-    <span class="kw">new</span> <span class="tp">RawHTTP3ServerConnectionFactory</span>(quicConfig, sessionListener);
-<span class="tp">QuicServerConnector</span> connector =
-    <span class="kw">new</span> <span class="tp">QuicServerConnector</span>(server, quicConfig, http3);
-server.<span class="fn">addConnector</span>(connector);
+<span class="add">+ <span class="tp">ServerQuicConfiguration</span> quicConfig =</span>
+<span class="add">+     <span class="kw">new</span> <span class="tp">ServerQuicConfiguration</span>(ssl, <span class="tp">Path</span>.<span class="fn">of</span>(<span class="st">"etc/quic-pems"</span>));</span>
+<span class="hl">▍quicConfig.<span class="fn">setMaxBidirectionalRemoteStreams</span>(1024);   <span class="cm">// ★ 关键: QUIC 流配额</span></span>
+<span class="add">+ <span class="tp">RawHTTP3ServerConnectionFactory</span> http3 =</span>
+<span class="add">+     <span class="kw">new</span> <span class="tp">RawHTTP3ServerConnectionFactory</span>(quicConfig, sessionListener);</span>
+<span class="add">+ <span class="tp">QuicServerConnector</span> connector =</span>
+<span class="add">+     <span class="kw">new</span> <span class="tp">QuicServerConnector</span>(server, quicConfig, http3);</span>
+<span class="ctx">server.<span class="fn">addConnector</span>(connector);</span>
     </div>
     <div class="codehead"><span class="tag">② 环境前置 (当前阻断)</span><span class="file">jetty-quiche-native</span></div>
     <div class="code">
@@ -476,9 +501,9 @@ server.<span class="fn">addConnector</span>(connector);
 <span class="bad">ClassNotFoundException: org.eclipse.jetty.quiche.Quiche   ← 当前缺失</span>
 
 <span class="cm">// 构建步骤 (参考 jetty.project/jetty-quiche):</span>
-git clone https://github.com/cloudflare/quiche
-<span class="cm"># 编译 native 库 → 复制 quiche.dll/libquiche.so 到 lib/quiche/</span>
-<span class="cm"># 将 jetty-quiche-native jar 放入 lib/ 并 -Dquiche.native.path 指向 DLL</span>
+<span class="add">+ git clone https://github.com/cloudflare/quiche</span>
+<span class="add">+ <span class="cm"># 编译 native 库 → 复制 quiche.dll/libquiche.so 到 lib/quiche/</span></span>
+<span class="add">+ <span class="cm"># 将 jetty-quiche-native jar 放入 lib/ 并 -Dquiche.native.path 指向 DLL</span></span>
     </div>
     <div class="note">结论：HTTP/3 无额外算法迁移点；TLS 层 PQC 自动生效（见迁移点1）。当前仅受 <b>Quiche 原生库</b>环境依赖阻断。</div>
   </div>
@@ -533,7 +558,7 @@ git clone https://github.com/cloudflare/quiche
   </div>
 
   <footer>
-    Jetty 12 PQC 迁移测试 · 生成于 2026-09-21 · 复现：<span class="mono">cd D:\PQC-test\jetty &amp;&amp; run_jetty_pqc.bat</span>
+    Jetty 12 PQC 迁移测试 · v1.2 · 生成于 2026-09-21 · 复现：<span class="mono">cd D:\PQC-test\jetty &amp;&amp; run_jetty_pqc.bat</span>
     <br>详细数据见 <span class="mono">Jetty_PQC_迁移测试报告.md</span> 与 <span class="mono">src/</span> 各 demo 源码
   </footer>
 </div>
