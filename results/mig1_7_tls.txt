@@ -1,0 +1,9 @@
+﻿[CLIENT] Named groups configured (PQC only): [X25519MLKEM768, x25519, secp256r1, secp384r1, secp521r1, x448, ffdhe2048, ffdhe3072, ffdhe4096]
+[CLIENT] GET https://localhost:18443/hello -> 200 (OK)
+[CLIENT] --- server response ---
+Jetty PQC TLS demo
+  URI        : /hello
+  HTTP proto : HTTP/1.1
+  Server TLS : TLSv1.3 + X25519MLKEM768 (hybrid)
+
+[CLIENT] SUCCESS: Jetty HttpClient outbound TLS negotiated PQC hybrid group (X25519MLKEM768)

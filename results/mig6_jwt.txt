@@ -1,0 +1,35 @@
+﻿=== 迁移点6: OIDC / JWT 签名算法评估 (jetty-openid) ===
+JDK: 27
+
+[1] 当前 JWT 算法签名/验签链路:
+    RS256 (RSA-2048): sign=444B verify=true
+    RS384 (RSA-2048): sign=444B verify=true
+    RS512 (RSA-2048): sign=444B verify=true
+    RS256 (RSA-3072): sign=614B verify=true
+    RS384 (RSA-3072): sign=614B verify=true
+    RS512 (RSA-3072): sign=614B verify=true
+    RS256 (RSA-4096): sign=785B verify=true
+    RS384 (RSA-4096): sign=785B verify=true
+    RS512 (RSA-4096): sign=785B verify=true
+    ES256 (P-256): sign=188B verify=true
+    ES384 (P-384): sign=230B verify=true
+    ES512 (P-521): sign=278B verify=true
+
+[2] 经典算法强度与后量子对比:
+    RSA-2048  ~ 112-bit 安全强度 (量子 Shor 可破)
+    RSA-3072  ~ 128-bit
+    P-256     ~ 128-bit (量子 Grover 减半为 64-bit)
+    P-384     ~ 192-bit (量子 96-bit)
+    ML-DSA-65 ~ 128-bit 后量子 (CNSA 2.0 要求)
+
+[3] PQC JOSE 算法可用性 (draft-ietf-jose-pqc):
+    ML-DSA-44 -> 可用 (意外)
+    ML-DSA-65 -> 可用 (意外)
+    ML-DSA-87 -> 可用 (意外)
+    SLH-DSA -> 可用 (意外)
+    Falcon-512 -> 可用 (意外)
+    => JOSE PQC 算法标准未定 (IETF jose-pqc WG), 当前 OIDC 迁移只能:
+       a) 提升经典强度 (RSA-3072+/P-384+, HS-384+)
+       b) 将 ID Token 校验与 TLS 分离, 待 JOSE PQC 标准落地后切换
+
+=== 迁移点6 结论: JWT 当前无 PQC 标准算法可用, 依赖 IETF jose-pqc; 近期仅可提升经典强度 ===

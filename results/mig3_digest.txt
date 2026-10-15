@@ -1,0 +1,23 @@
+﻿=== 迁移点3: Digest 认证 哈希算法迁移 (MD5 -> SHA-256/SHA3) ===
+JDK: 27
+
+[0] 摘要算法可用性 (RFC 7616 digest 底层依赖):
+    MD5        [迁移前(旧)] OK, hex_len=32
+    SHA-256    [迁移目标] OK, hex_len=64
+    SHA-512    [迁移目标] OK, hex_len=128
+    SHA3-256   [迁移目标] OK, hex_len=64
+    SHA3-384   [迁移目标] OK, hex_len=96
+    SHA3-512   [迁移目标] OK, hex_len=128
+
+[1] Jetty Digest 认证服务器启动: http://localhost:18446/protected/hello
+[2] 真实 HTTP Digest challenge-response 流程 ...
+    未认证请求 -> 401 (挑战) OK
+    WWW-Authenticate: Digest realm="pqc-realm", domain="/", nonce="AAABoMLhiKJE5rQqC+cQy3+0yJQKUwTpX3tSn9L3Sxw1d1qrQxtBRw80zO13K7pB", opaque="DvRD3ggMdGlMzODZs6NW57ApAeo5X7OLJHWZf0UJonQ=", stale=false, algorithm=SHA-256, qop="auth", charset=UTF-8, userhash=false
+    nonce=AAABoMLhiKJE5rQqC+cQy3+0yJQKUwTpX3tSn9L3Sxw1d1qrQxtBRw80zO13K7pB, algorithm=SHA-256
+    HA1=674147246d5c32792bf21f7dd06ffe6d3b72da524db2a604e354bdd64feae3e8, HA2=2ea705799a72e393be60fe68bb1c3ef41179b757c18911c8f4a64ddf442c3a19, qop=auth, nc=00000001
+    response=816169bd25f518c8473ef5f86beb2dd3a7635df07ff85011ab58038d242a0caa
+    Digest 认证请求 -> 200 (OK)
+    响应: Protected resource OK - authenticated as alice
+    => Digest 认证 + SHA-256 挑战-应答全链路验证通过
+
+=== 迁移点3 结论: Digest 认证已支持 SHA-256 (RFC 7616), 可平滑迁移, 无阻断 ===

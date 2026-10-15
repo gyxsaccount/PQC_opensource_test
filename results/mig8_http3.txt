@@ -1,0 +1,19 @@
+﻿=== 迁移点8: HTTP/3 (QUIC) 迁移评估 ===
+JDK: 27
+
+[1] HTTP/3 类可用性:
+    [ OK ] HTTP/3 配置 (org.eclipse.jetty.http3.HTTP3Configuration)
+    [ OK ] HTTP/3 会话接口 (org.eclipse.jetty.http3.api.Session$Server$Listener)
+    [ OK ] HTTP/3 连接工厂 (org.eclipse.jetty.http3.server.HTTP3ServerConnectionFactory)
+    [ OK ] HTTP/3 低级工厂 (org.eclipse.jetty.http3.server.RawHTTP3ServerConnectionFactory)
+    [ OK ] QUIC 服务器配置 (org.eclipse.jetty.quic.server.ServerQuicConfiguration)
+
+[2] Quiche 原生库依赖 (HTTP/3 必需):
+    [FAIL] Quiche Java 绑定缺失: org.eclipse.jetty.quiche.Quiche
+    => Jetty 12 HTTP/3 需自行构建 jetty-quiche-native (Windows 需 CMake/MSVC), 该依赖不在 Maven Central
+
+[3] HTTP/3 TLS 复用性 (PQC 迁移与迁移点1 一致):
+    JDK TLS named groups 首位: X25519MLKEM768
+    PQC 混合组可用: true (HTTP/3 出站/入站自动生效)
+
+=== 迁移点8 结论: HTTP/3 依赖 Quiche 原生库 (环境阻断); 其 TLS 层 PQC 迁移与迁移点1 相同, 无额外算法迁移点 ===
