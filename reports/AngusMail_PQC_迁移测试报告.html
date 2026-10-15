@@ -65,6 +65,17 @@
   .tok-field{ color:#e3b341; }                    /* 字段访问 */
   pre code { color:#c9d1d9; }
   code { color:#79c0ff; }
+
+  /* ---- 代码修改点行高亮（黄色背景 + 左侧竖线） ---- */
+  .modline {
+    display:block;
+    background:rgba(210,153,34,.16);
+    border-left:3px solid #d29922;
+    padding-left:10px;
+    margin-left:-8px;
+  }
+  .modline .tok-com.mod-tag { color:#d29922; font-weight:700; }
+  .mod-note { font-size:12.5px; color:var(--warn); margin:4px 0 10px; }
 </style>
 </head>
 <body>
@@ -101,6 +112,20 @@
   <tr><td><b>P5</b></td><td>邮件签名</td><td>DKIM 防伪造</td><td>RSA/Ed25519</td><td>混合 DKIM：<code>a=ed25519-sha256</code> + <code>a=mldsa65</code> 双签名</td><td><span class="status ok">✅ 实测通过</span></td></tr>
 </table>
 
+<h2>②.5 代码修改点一览（黄色高亮 = 本次迁移新增/改造的代码行）</h2>
+<table>
+  <tr><th>迁移点</th><th>修改文件（新增）</th><th>关键代码修改点</th><th>修改性质</th></tr>
+  <tr><td><b>P1</b></td><td><code>PqcSocketFactory.java</code></td><td><code>public static SSLSocketFactory getDefault()</code>（断点1 对策）；<code>configure()</code> 注入 <code>setNamedGroups([X25519MLKEM768, x25519])</code></td><td>新增接入类</td></tr>
+  <tr><td><b>P1</b></td><td><code>MailPqcConfig.java</code></td><td><code>p.put("mail.{proto}.ssl.socketFactory", new PqcSocketFactory())</code></td><td>新增属性装配</td></tr>
+  <tr><td><b>P1</b></td><td><code>PqcSsl.java</code> / <code>PqcMailServer.java</code></td><td>双栈 SSLContext 工厂 / 本地 PQC 邮件测试服务器</td><td>新增测试基座</td></tr>
+  <tr><td><b>P2</b></td><td><code>PqcSaslClient.java</code></td><td><code>evaluateChallenge()</code> 用 <code>Signature.getInstance("ML-DSA")</code> 签名响应</td><td>新增认证机制</td></tr>
+  <tr><td><b>P2</b></td><td><code>PqcSaslProvider.java</code></td><td><code>put("SaslClientFactory.PQC-SIGN", ...)</code>（断点3 对策）</td><td>新增 JCA Provider 注册</td></tr>
+  <tr><td><b>P3</b></td><td><code>PqcMailCrypto.java</code></td><td><code>encrypt/decrypt/sign/verify</code> 混合信封（ML-KEM-768 + RSA-OAEP → AES-256-GCM）</td><td>新增端到端加密</td></tr>
+  <tr><td><b>P4</b></td><td><code>PqcVault.java</code></td><td><code>seal/open</code> ML-KEM-768 封装 DEK + AES-256-GCM</td><td>新增凭证存储</td></tr>
+  <tr><td><b>P5</b></td><td><code>PqcDkim.java</code></td><td><code>X-PQC-DKIM-Signature: a=mldsa65</code> 双签名头</td><td>新增邮件签名</td></tr>
+</table>
+<p class="mod-note">图中代码块内 <span class="status warn">黄色底 + 左边框</span> 的行即修改点（行尾标记 <code>// 🔧 修改点</code>）。Angus Mail 本体代码零改动。</p>
+
 <h2>③ 组件版本配套关系</h2>
 <table>
   <tr><th>组件</th><th>版本</th><th>作用</th><th>配套说明</th></tr>
@@ -128,21 +153,21 @@ BouncyCastle 1.86 (bcprov + bctls) : 纯 MLKEM768 / ML-DSA 证书 / 混合组 �
 <pre><code>// MailPqcConfig —— 三协议统一注入 PQC 套接字工厂 + TLSv1.3
 p.setProperty("mail." + proto + ".ssl.enable", "true");        // 隐式 TLS
 p.setProperty("mail." + proto + ".ssl.protocols", "TLSv1.3");
-p.put("mail." + proto + ".ssl.socketFactory", new PqcSocketFactory()); // 实例注入
+p.put("mail." + proto + ".ssl.socketFactory", new PqcSocketFactory()); // [PQC-MOD] 实例注入
 p.setProperty("mail." + proto + ".ssl.socketFactory.fallback", "false");</code></pre>
 
 <h3>自定义套接字工厂（JDK/BC 双栈，握手前注入 PQC 群组）</h3>
 <pre><code>public final class PqcSocketFactory extends SSLSocketFactory {
-    public static SSLSocketFactory getDefault() {        // ★ Angus SocketFetcher 约定
+    public static SSLSocketFactory getDefault() {        // [PQC-MOD] ★ Angus SocketFetcher 约定
         return new PqcSocketFactory();
     }
-    public PqcSocketFactory() {                           // 无参构造（Angus 反射实例化）
+    public PqcSocketFactory() {                           // [PQC-MOD] 无参构造（Angus 反射实例化）
         this.delegate = context.getSocketFactory();
         this.bc = PqcSsl.BC_JSSE.equals(context.getProvider().getName());
     }
     private Socket configure(Socket socket) {
-        // BC: BCSSLParameters.setNamedGroups([X25519MLKEM768, x25519]) + setSignatureSchemes([mldsa65...])
-        // JDK: SSLParameters.setNamedGroups([X25519MLKEM768, x25519])
+        // BC: BCSSLParameters.setNamedGroups([X25519MLKEM768, x25519]) + setSignatureSchemes([mldsa65...]) // [PQC-MOD]
+        // JDK: SSLParameters.setNamedGroups([X25519MLKEM768, x25519]) // [PQC-MOD]
         // 统一: setProtocols([TLSv1.3]) + handshakeCompletedListener 记录会话
     }
 }</code></pre>
@@ -181,16 +206,16 @@ p.setProperty("mail." + proto + ".ssl.socketFactory.fallback", "false");</code><
 <div>
 <pre><code>// PqcSaslClient —— ML-DSA-65 签名挑战
 byte[] input = ("PQC-SIGN\0" + challenge + "\0" + user);
-Signature sig = Signature.getInstance("ML-DSA");
+Signature sig = Signature.getInstance("ML-DSA"); // [PQC-MOD]
 sig.initSign(privateKey);  sig.update(input);
-resp = user + ":" + base64(sig.sign());
+resp = user + ":" + base64(sig.sign()); // [PQC-MOD] 挑战-响应
 
 // PqcSaslProvider —— JCA Provider 注册（断点3 对策）
-put("SaslClientFactory.PQC-SIGN",
+put("SaslClientFactory.PQC-SIGN", // [PQC-MOD]
     PqcSaslClientFactory.class.getName());
 
 // 会话属性
-mail.smtp.auth.mechanisms = PQC-SIGN
+mail.smtp.auth.mechanisms = PQC-SIGN // [PQC-MOD]
 mail.smtp.sasl.enable = true</code></pre>
 </div>
 <div>
@@ -209,16 +234,16 @@ mail.smtp.sasl.enable = true</code></pre>
 <div class="grid2">
 <div>
 <pre><code>// 混合信封：ML-KEM-768 + RSA-OAEP → AES-256-GCM
-KEM.Encapsulator enc = kem.newEncapsulator(mlkemPub);
+KEM.Encapsulator enc = kem.newEncapsulator(mlkemPub); // [PQC-MOD] 后量子封装
 KEM.Encapsulated cap = enc.encapsulate();
 byte[] mlkemSs = cap.key().getEncoded();     // 后量子
 byte[] rsaCt  = rsaCipher.doFinal(randomCek); // 经典兜底
-byte[] cek = sha256(mlkemSs || sha256(randomCek));
+byte[] cek = sha256(mlkemSs || sha256(randomCek)); // [PQC-MOD] 联合派生 CEK
 AES-256-GCM(cek, data)                        // 内容加密</code></pre>
 </div>
 <div>
 <pre><code>// 混合签名：ML-DSA-65 + Ed25519 双签名
-Signature mldsa = Signature.getInstance("ML-DSA");
+Signature mldsa = Signature.getInstance("ML-DSA"); // [PQC-MOD]
 Signature ed    = Signature.getInstance("Ed25519");
 // 两份签名都验证通过才有效（防量子伪造）</code></pre>
 </div>
@@ -228,14 +253,14 @@ Signature ed    = Signature.getInstance("Ed25519");
 
 <h2>⑦ 迁移点 P4：本地凭证量子抗性存储</h2>
 <pre><code>// PqcVault —— 每个 Vault 持有 ML-KEM-768 密钥对
-seal(): ML-KEM 公钥封装随机 DEK → AES-256-GCM 加密明文 → 可落盘 blob
-open(): ML-KEM 私钥解封装 DEK → 解密
+seal(): ML-KEM 公钥封装随机 DEK → AES-256-GCM 加密明文 → 可落盘 blob // [PQC-MOD]
+open(): ML-KEM 私钥解封装 DEK → 解密 // [PQC-MOD]
 // 格式: "PQCVAULT1" || ML-KEM 密文(1088B) || IV(12B) || AES-GCM 密文</code></pre>
 <div class="note">✅ 实测：明文 23B → blob 1150B，恢复原文匹配=true。</div>
 
 <h2>⑧ 迁移点 P5：混合 DKIM 签名</h2>
 <pre><code>DKIM-Signature:      v=1; a=ed25519-sha256; c=relaxed/relaxed; d=pqc.local; s=pqc; bh=&lt;sha256(body)&gt;; h=from:subject; pk=&lt;pub&gt;; b=&lt;Ed25519 sig&gt;
-X-PQC-DKIM-Signature: v=1; a=mldsa65; ...; b=&lt;ML-DSA-65 sig&gt;
+X-PQC-DKIM-Signature: v=1; a=mldsa65; ...; b=&lt;ML-DSA-65 sig&gt; // [PQC-MOD] PQC 双签名头
 // 收件端需同时通过两个验签，防量子伪造</code></pre>
 <div class="note">✅ 实测：经典 DKIM a=ed25519-sha256 验证=true；PQC DKIM a=mldsa65 验证=true。</div>
 
@@ -300,7 +325,8 @@ X-PQC-DKIM-Signature: v=1; a=mldsa65; ...; b=&lt;ML-DSA-65 sig&gt;
 │   └── approachC/  # MainC（混合双栈 + P2-P5 全迁移点）
 ├── build.ps1       # 编译（纯 javac）
 ├── run-all.ps1     # 一键运行三方案 → logs/
-└── pom.xml         # Maven 依赖参考</code></pre>
+├── pom.xml         # Maven 依赖参考
+└── README.md       # 环境要求/依赖安装/运行/预期输出/严格性说明/版本记录/断点链接</code></pre>
 
 <h2>⑪ 实施路线</h2>
 <table>
@@ -311,7 +337,7 @@ X-PQC-DKIM-Signature: v=1; a=mldsa65; ...; b=&lt;ML-DSA-65 sig&gt;
   <tr><td><b>远期</b></td><td>2033+</td><td>CNSA 2.0：全链路纯 ML-KEM/ML-DSA，移除经典回退</td></tr>
 </table>
 
-<footer>Angus Mail PQC 迁移测试报告 · 2026-09-29 · 验证数据取自 logs/runA.log / runB.log / runC.log</footer>
+<footer>Angus Mail PQC 迁移测试报告 · 2026-09-29（v1.0.1，新增代码修改点高亮）· 验证数据取自 logs/runA.log / runB.log / runC.log</footer>
 </div>
 
 <script>
@@ -328,17 +354,17 @@ X-PQC-DKIM-Signature: v=1; a=mldsa65; ...; b=&lt;ML-DSA-65 sig&gt;
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 
-  function highlight(code) {
+  function highlightLine(line) {
     var re = /(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|(@[A-Za-z_$][A-Za-z0-9_$]*)|(\b\d+(?:\.\d+)?[lLfFdD]?\b)|([A-Za-z_$][A-Za-z0-9_$]*)|(\s+)|([^\s])/g;
     var out = "", m, cls, last = 0;
-    while ((m = re.exec(code)) !== null) {
-      out += esc(code.slice(last, m.index));
+    while ((m = re.exec(line)) !== null) {
+      out += esc(line.slice(last, m.index));
       if (m[1]) { cls = "tok-com"; }
       else if (m[2]) { cls = "tok-str"; }
       else if (m[3]) { cls = "tok-ann"; }
       else if (m[4]) { cls = "tok-num"; }
       else if (m[5]) {
-        var w = m[5], rest = code.slice(re.lastIndex);
+        var w = m[5], rest = line.slice(re.lastIndex);
         if (KEYWORDS.has(w)) { cls = "tok-kw"; }
         else if (/^[A-Z][A-Z0-9_]*$/.test(w)) { cls = "tok-con"; }
         else if (/^[A-Z]/.test(w)) { cls = "tok-type"; }
@@ -349,11 +375,27 @@ X-PQC-DKIM-Signature: v=1; a=mldsa65; ...; b=&lt;ML-DSA-65 sig&gt;
       else if (m[6]) { out += m[6]; last = re.lastIndex; continue; }
       else { out += esc(m[7]); last = re.lastIndex; continue; }
 
-      out += cls ? '<span class="' + cls + '">' + esc(m[0]) + "</span>" : esc(m[0]);
+      // 修改点标记注释着色（🔧 修改点）
+      if (cls === "tok-com" && /\[PQC-MOD\]/.test(m[0])) {
+        out += '<span class="tok-com mod-tag">' + esc("// 🔧 修改点 " + m[0].replace(/\/\/\s*\[PQC-MOD\]/, "").replace(/^\s*/, "")) + "</span>";
+      } else {
+        out += cls ? '<span class="' + cls + '">' + esc(m[0]) + "</span>" : esc(m[0]);
+      }
       last = re.lastIndex;
     }
-    out += esc(code.slice(last));
+    out += esc(line.slice(last));
     return out;
+  }
+
+  function highlight(code) {
+    var lines = code.split("\n"), out = [];
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      var isMod = /\[PQC-MOD\]/.test(line);
+      var hl = highlightLine(line);
+      out.push(isMod ? '<span class="modline">' + hl + '</span>' : hl);
+    }
+    return out.join("\n");
   }
 
   document.querySelectorAll("code").forEach(function (el) {

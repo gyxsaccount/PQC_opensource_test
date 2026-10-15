@@ -64,6 +64,23 @@
 
 ---
 
+## 2.5 代码修改点一览
+
+> **约定**：本文所有代码示例中，标有 `// [PQC-MOD]`（或行尾 `// 🔧 修改点`）的行 = 本次迁移新增/改造的代码行。Angus Mail 本体代码**零改动**。
+
+| 迁移点 | 修改文件（新增） | 关键代码修改点 | 修改性质 |
+|---|---|---|---|
+| P1 | `PqcSocketFactory.java` | `public static SSLSocketFactory getDefault()`（断点1 对策）；`configure()` 注入 `setNamedGroups([X25519MLKEM768, x25519])` | 新增接入类 |
+| P1 | `MailPqcConfig.java` | `p.put("mail.{proto}.ssl.socketFactory", new PqcSocketFactory())` | 新增属性装配 |
+| P1 | `PqcSsl.java` / `PqcMailServer.java` | 双栈 SSLContext 工厂 / 本地 PQC 邮件测试服务器 | 新增测试基座 |
+| P2 | `PqcSaslClient.java` | `evaluateChallenge()` 用 `Signature.getInstance("ML-DSA")` 签名响应 | 新增认证机制 |
+| P2 | `PqcSaslProvider.java` | `put("SaslClientFactory.PQC-SIGN", ...)`（断点3 对策） | 新增 JCA Provider 注册 |
+| P3 | `PqcMailCrypto.java` | `encrypt/decrypt/sign/verify` 混合信封（ML-KEM-768 + RSA-OAEP → AES-256-GCM） | 新增端到端加密 |
+| P4 | `PqcVault.java` | `seal/open` ML-KEM-768 封装 DEK + AES-256-GCM | 新增凭证存储 |
+| P5 | `PqcDkim.java` | `X-PQC-DKIM-Signature: a=mldsa65` 双签名头 | 新增邮件签名 |
+
+---
+
 ## 3. 组件版本配套关系
 
 ### 3.1 依赖矩阵（lib/ 下全部实测兼容）
@@ -115,7 +132,7 @@ private static Properties base(String proto, String host, int port) {
     p.setProperty("mail." + proto + ".ssl.enable", "true");            // 隐式 TLS
     p.setProperty("mail." + proto + ".starttls.enable", "true");       // STARTTLS 通道
     p.setProperty("mail." + proto + ".ssl.protocols", "TLSv1.3");
-    p.put("mail." + proto + ".ssl.socketFactory", new PqcSocketFactory()); // 实例注入
+    p.put("mail." + proto + ".ssl.socketFactory", new PqcSocketFactory()); // [PQC-MOD] 实例注入
     p.setProperty("mail." + proto + ".ssl.socketFactory.fallback", "false");
     return p;
 }
@@ -129,11 +146,11 @@ public final class PqcSocketFactory extends SSLSocketFactory {
     private static volatile String[] signatureSchemes;
     private static volatile SSLSession lastSession;       // 记录最近握手会话供报告
 
-    public static SSLSocketFactory getDefault() {         // ★ Angus SocketFetcher 约定
+    public static SSLSocketFactory getDefault() {         // [PQC-MOD] ★ Angus SocketFetcher 约定
         return new PqcSocketFactory();
     }
 
-    public PqcSocketFactory() {                            // 无参构造（Angus newInstance）
+    public PqcSocketFactory() {                            // [PQC-MOD] 无参构造（Angus newInstance）
         this.delegate = context.getSocketFactory();
         this.bc = PqcSsl.BC_JSSE.equals(context.getProvider().getName());
     }
@@ -243,11 +260,11 @@ public byte[] evaluateChallenge(byte[] challenge) throws SaslException {
     String user = authorizationId != null ? authorizationId : "anonymous";
     byte[] input = ("PQC-SIGN\0" + new String(challenge, ISO_8859_1) + "\0" + user)
             .getBytes(UTF_8);
-    Signature sig = Signature.getInstance("ML-DSA");       // JDK 27 原生 FIPS 204
+    Signature sig = Signature.getInstance("ML-DSA");       // [PQC-MOD] JDK 27 原生 FIPS 204
     sig.initSign(KeyFactory.getInstance("ML-DSA")
             .generatePrivate(new PKCS8EncodedKeySpec(privateKey)));
     sig.update(input);
-    String resp = user + ":" + Base64.getEncoder().encodeToString(sig.sign());
+    String resp = user + ":" + Base64.getEncoder().encodeToString(sig.sign()); // [PQC-MOD] 挑战-响应
     complete = true;
     return resp.getBytes(UTF_8);
 }
@@ -262,7 +279,7 @@ public byte[] evaluateChallenge(byte[] challenge) throws SaslException {
 public final class PqcSaslProvider extends Provider {
     public PqcSaslProvider() {
         super("PqcSasl", 1.0, "PQC-SIGN (ML-DSA challenge-response) SASL provider");
-        put("SaslClientFactory.PQC-SIGN", PqcSaslClientFactory.class.getName());
+        put("SaslClientFactory.PQC-SIGN", PqcSaslClientFactory.class.getName()); // [PQC-MOD] 断点3 对策
     }
 }
 // 使用时：Security.addProvider(new PqcSaslProvider());
@@ -307,11 +324,11 @@ props.setProperty("mail.smtp.sasl.pqc.privateKey", b64(ML-DSA 私钥));
 ```java
 // PqcMailCrypto.encrypt —— 混合封装
 KEM kem = KEM.getInstance("ML-KEM");
-KEM.Encapsulator enc = kem.newEncapsulator(recipient.mlkemPub);   // 公钥封装
+KEM.Encapsulator enc = kem.newEncapsulator(recipient.mlkemPub);   // [PQC-MOD] 公钥封装
 KEM.Encapsulated cap = enc.encapsulate();
 byte[] mlkemSs = cap.key().getEncoded();                          // ML-KEM 共享密钥
 byte[] rsaCt = rsaCipher.doFinal(randomCek);                      // RSA-OAEP 封装
-byte[] cek = sha256(concat(mlkemSs, sha256(randomCek)));          // 联合派生
+byte[] cek = sha256(concat(mlkemSs, sha256(randomCek)));          // [PQC-MOD] 联合派生
 Cipher aes = Cipher.getInstance("AES/GCM/NoPadding");
 aes.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(cek, "AES"));
 byte[] ct = aes.doFinal(data);                                    // AES-256-GCM
@@ -359,7 +376,7 @@ Angus Mail MimeMessage 承载密文往返: 解密还原=true | 主题=PQC 加密
 ### 7.2 实现要点
 
 ```java
-KEM.Encapsulator enc = kem.newEncapsulator(vaultPub);      // 封装随机 DEK
+KEM.Encapsulator enc = kem.newEncapsulator(vaultPub);      // [PQC-MOD] 封装随机 DEK
 byte[] dek = sha256(cap.key().getEncoded());
 Cipher aes = Cipher.getInstance("AES/GCM/NoPadding");      // AES-256-GCM
 aes.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(dek, "AES"));
@@ -382,7 +399,7 @@ Vault(ML-KEM-768 封装 DEK + AES-256-GCM): 明文=23B | blob=1150B | 恢复=smt
 
 ```
 DKIM-Signature: v=1; a=ed25519-sha256; c=relaxed/relaxed; d=pqc.local; s=pqc; bh=<sha256(body)>; h=from:subject; pk=<公钥>; b=<Ed25519 签名>
-X-PQC-DKIM-Signature: v=1; a=mldsa65; c=relaxed/relaxed; d=pqc.local; s=pqc; bh=<sha256(body)>; h=from:subject; pk=<公钥>; b=<ML-DSA-65 签名>
+X-PQC-DKIM-Signature: v=1; a=mldsa65; c=relaxed/relaxed; d=pqc.local; s=pqc; bh=<sha256(body)>; h=from:subject; pk=<公钥>; b=<ML-DSA-65 签名>  <!-- [PQC-MOD] PQC 双签名头 -->
 ```
 
 签名输入 = `from + "\n" + subject + "\n" + base64(bh)`（DKIM 式 header 规范化 + 正文哈希）。
@@ -480,7 +497,8 @@ angus-mail/
 │   └── approachC/MainC.java    # 方案C：混合双栈 + P2/P3/P4/P5 全迁移点
 ├── build.ps1                   # 编译（纯 javac，无需 Maven）
 ├── run-all.ps1                 # 一键运行三方案并生成日志
-└── pom.xml                     # Maven 依赖参考（CI 环境）
+├── pom.xml                     # Maven 依赖参考（CI 环境）
+└── README.md                   # 环境要求/依赖安装/运行/预期输出/严格性说明/版本记录/断点链接
 ```
 
 **运行方式**：
@@ -510,6 +528,13 @@ powershell -ExecutionPolicy Bypass -File run-all.ps1    # 运行三方案 -> log
 | **中期** | 2029-2030 | LAMPS 标准成熟后，P3 混合信封嵌入标准 CMS/OpenPGP；服务端证书过渡到双证书（经典+PQC） |
 | **远期** | 2033+ | CNSA 2.0：全链路纯 ML-KEM/ML-DSA，移除经典回退 |
 
+### 版本记录
+
+| 版本 | 日期 | 变更 |
+|---|---|---|
+| 1.0.0 | 2026-09-29 | 初始版本：P1–P5 全迁移点、三方案实测、6 断点对策、可视化报告 |
+| 1.0.1 | 2026-09-29 | 刷新：新增「代码修改点一览」，代码示例中修改点行以 `// [PQC-MOD]` 标注（HTML 版黄色高亮），工程结构补充 README.md |
+
 ---
 
-*报告生成：2026-09-29 · 全部验证数据取自 `logs/runA.log` / `logs/runB.log` / `logs/runC.log`*
+*报告生成：2026-09-29（v1.0.1）· 全部验证数据取自 `logs/runA.log` / `logs/runB.log` / `logs/runC.log`*
