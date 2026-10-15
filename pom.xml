@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Angus Mail 后量子（PQC）迁移测试 —— Maven 依赖参考
+  本地构建使用 build.ps1（纯 javac）；CI/正式工程可用本 pom 引入依赖。
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.example</groupId>
+  <artifactId>angus-mail-pqc-migration</artifactId>
+  <version>1.0.0</version>
+  <packaging>jar</packaging>
+
+  <properties>
+    <maven.compiler.source>21</maven.compiler.source>
+    <maven.compiler.target>21</maven.compiler.target>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <angus.mail.version>2.0.5</angus.mail.version>
+    <angus.activation.version>2.0.3</angus.activation.version>
+    <jakarta.mail-api.version>2.1.5</jakarta.mail-api.version>
+    <jakarta.activation-api.version>2.1.4</jakarta.activation-api.version>
+    <bc.version>1.86</bc.version>
+  </properties>
+
+  <dependencies>
+    <!-- Eclipse Angus Mail（Jakarta Mail 参考实现） -->
+    <dependency>
+      <groupId>org.eclipse.angus</groupId>
+      <artifactId>angus-mail</artifactId>
+      <version>${angus.mail.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.eclipse.angus</groupId>
+      <artifactId>angus-activation</artifactId>
+      <version>${angus.activation.version}</version>
+      <scope>runtime</scope>
+    </dependency>
+
+    <!-- BouncyCastle PQC：bcprov + bcutil + bctls（BCJSSE），方案B/C 必需 -->
+    <dependency>
+      <groupId>org.bouncycastle</groupId>
+      <artifactId>bcprov-jdk18on</artifactId>
+      <version>${bc.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.bouncycastle</groupId>
+      <artifactId>bcutil-jdk18on</artifactId>
+      <version>${bc.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.bouncycastle</groupId>
+      <artifactId>bctls-jdk18on</artifactId>
+      <version>${bc.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.bouncycastle</groupId>
+      <artifactId>bcpkix-jdk18on</artifactId>
+      <version>${bc.version}</version>
+    </dependency>
+  </dependencies>
+</project>

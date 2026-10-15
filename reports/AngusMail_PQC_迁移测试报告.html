@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Angus Mail 后量子（PQC）迁移测试报告</title>
+<style>
+  :root {
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2129; --border:#30363d;
+    --txt:#e6edf3; --muted:#8b949e; --accent:#58a6ff; --ok:#3fb950; --warn:#d29922; --fail:#f85149;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:"Segoe UI", system-ui, sans-serif; background:var(--bg); color:var(--txt); line-height:1.6; }
+  .wrap { max-width:1080px; margin:0 auto; padding:28px 20px 60px; }
+
+  header.hero { background:linear-gradient(135deg,#0d1117 0%,#1a2436 60%,#14293a 100%); border:1px solid var(--border); border-radius:16px; padding:32px 28px; margin-bottom:28px; }
+  header.hero h1 { margin:0 0 6px; font-size:26px; background:linear-gradient(90deg,#58a6ff,#3fb950,#d29922); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  header.hero p { margin:4px 0; color:var(--muted); font-size:14px; }
+  .badges { display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; }
+  .badge { padding:4px 12px; border-radius:999px; font-size:12px; border:1px solid var(--border); background:var(--panel2); }
+
+  h2 { font-size:20px; border-left:4px solid var(--accent); padding-left:10px; margin:40px 0 14px; }
+  h3 { font-size:16px; margin:26px 0 10px; color:var(--accent); }
+
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; }
+  .card { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:14px 16px; }
+  .card .num { font-size:13px; color:var(--muted); letter-spacing:1px; }
+  .card .title { font-weight:700; margin:2px 0 6px; }
+  .card .desc { font-size:12.5px; color:var(--muted); }
+  .status { display:inline-block; padding:2px 10px; border-radius:999px; font-size:11.5px; font-weight:600; }
+  .status.ok { background:rgba(63,185,80,.15); color:var(--ok); border:1px solid rgba(63,185,80,.4); }
+  .status.warn { background:rgba(210,153,34,.15); color:var(--warn); border:1px solid rgba(210,153,34,.4); }
+  .status.fail { background:rgba(248,81,73,.15); color:var(--fail); border:1px solid rgba(248,81,73,.4); }
+
+  table { width:100%; border-collapse:collapse; background:var(--panel); border-radius:12px; overflow:hidden; font-size:13.5px; }
+  th, td { padding:9px 12px; border-bottom:1px solid var(--border); text-align:left; vertical-align:top; }
+  th { background:var(--panel2); color:var(--muted); font-weight:600; }
+  tr:last-child td { border-bottom:none; }
+  code { background:var(--panel2); border:1px solid var(--border); border-radius:5px; padding:1px 6px; font-family:"Cascadia Code", Consolas, monospace; font-size:12.5px; color:#79c0ff; }
+  pre { background:var(--panel2); border:1px solid var(--border); border-radius:10px; padding:14px 16px; overflow-x:auto; font-size:12.5px; line-height:1.55; }
+  pre code { background:none; border:none; padding:0; color:#c9d1d9; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .grid2 pre { margin:0; }
+  .note { background:rgba(88,166,255,.07); border:1px solid rgba(88,166,255,.3); border-radius:10px; padding:10px 14px; font-size:13px; }
+  .note.warn { background:rgba(210,153,34,.08); border-color:rgba(210,153,34,.35); }
+  .note.fail { background:rgba(248,81,73,.08); border-color:rgba(248,81,73,.35); }
+
+  .flow { font-family:"Cascadia Code", Consolas, monospace; font-size:12px; background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:14px 18px; white-space:pre; overflow-x:auto; color:#8b949e; }
+  .flow .hl { color:var(--ok); font-weight:700; }
+  .flow .hl2 { color:var(--accent); }
+  .muted { color:var(--muted); }
+  footer { margin-top:50px; color:var(--muted); font-size:12px; text-align:center; }
+  @media (max-width:760px){ .grid2{grid-template-columns:1fr;} }
+
+  /* ---- Java 语法高亮配色（GitHub Dark 风格） ---- */
+  pre code, code { font-family:"Cascadia Code", Consolas, monospace; }
+  .tok-kw   { color:#ff7b72; font-weight:600; }   /* 关键字 */
+  .tok-str  { color:#a5d6ff; }                    /* 字符串/字符 */
+  .tok-com  { color:#8b949e; font-style:italic; } /* 注释 */
+  .tok-num  { color:#79c0ff; }                    /* 数字 */
+  .tok-ann  { color:#d2a8ff; font-weight:600; }   /* 注解 */
+  .tok-type { color:#ffa657; }                    /* 类名/类型 */
+  .tok-con  { color:#56d4dd; }                    /* 常量 */
+  .tok-fn   { color:#d2a8ff; }                    /* 方法调用 */
+  .tok-field{ color:#e3b341; }                    /* 字段访问 */
+  pre code { color:#c9d1d9; }
+  code { color:#79c0ff; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <h1>🔐 Angus Mail 后量子（PQC）迁移测试报告</h1>
+  <p>Eclipse Angus Mail（Jakarta Mail 参考实现）— 5 个迁移点全实现 · 3 条技术路线实测 · 6 个断点全部有对策</p>
+  <div class="badges">
+    <span class="badge">JDK 27</span>
+    <span class="badge">angus-mail 2.0.5</span>
+    <span class="badge">BouncyCastle 1.86</span>
+    <span class="badge">X25519MLKEM768</span>
+    <span class="badge">ML-KEM-768</span>
+    <span class="badge">ML-DSA-65</span>
+  </div>
+</header>
+
+<h2>① 结论速览</h2>
+<div class="cards">
+  <div class="card"><div class="num">KEY POINT</div><div class="title">业务代码零侵入</div><div class="desc">Angus Mail 是纯应用层库，密码学全部委托 JSSE/SASL/BC，迁移收敛在接入层与密码学装配层。</div></div>
+  <div class="card"><div class="num">COVERAGE</div><div class="title">5 个迁移点全实现</div><div class="desc">P1 TLS · P2 认证 · P3 加密 · P4 凭证 · P5 签名，全部可运行、可复现。</div></div>
+  <div class="card"><div class="num">ROUTES</div><div class="title">3 条技术路线</div><div class="desc">A JDK 原生 / B BouncyCastle / C 混合双栈（生产推荐）。</div></div>
+  <div class="card"><div class="num">GAPS</div><div class="title">6 个断点全有解</div><div class="desc">含 getDefault() 约定、主机名校验、Sasl Provider 注册等。</div></div>
+</div>
+
+<h2>② 迁移点总览</h2>
+<table>
+  <tr><th>#</th><th>迁移点</th><th>使用面</th><th>经典算法</th><th>后量子方案</th><th>状态</th></tr>
+  <tr><td><b>P1</b></td><td>TLS 传输</td><td>SMTP/IMAP/POP3 隐式 TLS + STARTTLS</td><td>ECDHE/X25519 + ECDSA 证书</td><td>混合密钥交换 <code>X25519MLKEM768</code>；BC 栈支持 <code>ML-DSA-65</code> 证书</td><td><span class="status ok">✅ 实测通过</span></td></tr>
+  <tr><td><b>P2</b></td><td>认证</td><td>SASL（替代 CRAM-MD5/DIGEST-MD5）</td><td>口令哈希 / OAuth2 令牌</td><td>自定义 <code>PQC-SIGN</code>：ML-DSA 挑战-响应签名</td><td><span class="status ok">✅ 实测通过</span></td></tr>
+  <tr><td><b>P3</b></td><td>端到端加密</td><td>S/MIME / OpenPGP 内容机密性</td><td>RSA/ECDSA + AES</td><td>混合信封 <code>ML-KEM-768 + RSA-OAEP → AES-256-GCM</code>；混合签名 <code>ML-DSA-65 + Ed25519</code></td><td><span class="status ok">✅ 实测通过</span></td></tr>
+  <tr><td><b>P4</b></td><td>本地凭证</td><td>口令/OAuth2 令牌落盘</td><td>AES-GCM + 口令 KDF</td><td>PqcVault：<code>ML-KEM-768 封装 DEK + AES-256-GCM</code></td><td><span class="status ok">✅ 实测通过</span></td></tr>
+  <tr><td><b>P5</b></td><td>邮件签名</td><td>DKIM 防伪造</td><td>RSA/Ed25519</td><td>混合 DKIM：<code>a=ed25519-sha256</code> + <code>a=mldsa65</code> 双签名</td><td><span class="status ok">✅ 实测通过</span></td></tr>
+</table>
+
+<h2>③ 组件版本配套关系</h2>
+<table>
+  <tr><th>组件</th><th>版本</th><th>作用</th><th>配套说明</th></tr>
+  <tr><td><b>angus-mail</b></td><td><code>2.0.5</code></td><td>Jakarta Mail 参考实现</td><td>版本由父 POM 统一管理，勿随意升级 mail-api</td></tr>
+  <tr><td>jakarta.mail-api</td><td><code>2.1.5</code></td><td>Jakarta Mail API</td><td>由 angus-mail 2.0.5 锁定（mail-api.version）</td></tr>
+  <tr><td>angus-activation</td><td><code>2.0.3</code></td><td>Jakarta Activation 实现</td><td>由父 POM 锁定（angus.activation.version）</td></tr>
+  <tr><td>jakarta.activation-api</td><td><code>2.1.4</code></td><td>Jakarta Activation API</td><td>由父 POM 锁定（activation-api.version）</td></tr>
+  <tr><td><b>bcprov / bcutil / bcpkix</b></td><td><code>1.86</code></td><td>BC 原语 / 证书工具</td><td>方案B/C 必需；bcutil 缺失会 NoClassDefFoundError</td></tr>
+  <tr><td><b>bctls</b></td><td><code>1.86.1</code></td><td>BCJSSE TLS Provider</td><td>依赖 bcprov+bcutil，版本需与 bcprov 一致</td></tr>
+  <tr><td>JDK</td><td><code>27</code></td><td>SunJSSE + JEP 496/497</td><td>方案A 零依赖；JDK &lt;27 需切换 BC（见断点4）</td></tr>
+</table>
+
+<pre>
+angus-mail 2.0.5 ─┬─ jakarta.mail-api 2.1.5
+                  ├─ angus-activation 2.0.3
+                  └─ jakarta.activation-api 2.1.4
+
+JDK 27 SunJSSE : TLSv1.3 + X25519MLKEM768  ✅ 混合密钥交换
+                 signature_algorithms 无 mldsa ❌ (PQC 证书签名仅 BC)
+BouncyCastle 1.86 (bcprov + bctls) : 纯 MLKEM768 / ML-DSA 证书 / 混合组 ✅ 全能力
+</pre>
+
+<h2>④ 迁移点 P1：TLS 传输（SMTP / IMAP / POP3）</h2>
+<h3>改造方式：Angus Mail 侧零代码改动，纯属性装配</h3>
+<pre><code>// MailPqcConfig —— 三协议统一注入 PQC 套接字工厂 + TLSv1.3
+p.setProperty("mail." + proto + ".ssl.enable", "true");        // 隐式 TLS
+p.setProperty("mail." + proto + ".ssl.protocols", "TLSv1.3");
+p.put("mail." + proto + ".ssl.socketFactory", new PqcSocketFactory()); // 实例注入
+p.setProperty("mail." + proto + ".ssl.socketFactory.fallback", "false");</code></pre>
+
+<h3>自定义套接字工厂（JDK/BC 双栈，握手前注入 PQC 群组）</h3>
+<pre><code>public final class PqcSocketFactory extends SSLSocketFactory {
+    public static SSLSocketFactory getDefault() {        // ★ Angus SocketFetcher 约定
+        return new PqcSocketFactory();
+    }
+    public PqcSocketFactory() {                           // 无参构造（Angus 反射实例化）
+        this.delegate = context.getSocketFactory();
+        this.bc = PqcSsl.BC_JSSE.equals(context.getProvider().getName());
+    }
+    private Socket configure(Socket socket) {
+        // BC: BCSSLParameters.setNamedGroups([X25519MLKEM768, x25519]) + setSignatureSchemes([mldsa65...])
+        // JDK: SSLParameters.setNamedGroups([X25519MLKEM768, x25519])
+        // 统一: setProtocols([TLSv1.3]) + handshakeCompletedListener 记录会话
+    }
+}</code></pre>
+
+<div class="flow">
+[Angus Mail 客户端] ──TLSv1.3──┐
+        │                      │
+        ▼                      ▼
+┌────────────────────────────────────────────┐
+│  本地 PQC 邮件服务器 (SSLServerSocket)      │
+│  SMTP 2543  220 ESMTP / 250-AUTH PQC-SIGN  │
+│  IMAP 2544  * OK CAPABILITY / LOGIN / LIST │
+│  POP3 2545  +OK / CAPA / USER / PASS / STAT│
+└────────────────────────────────────────────┘
+握手调试日志（logs/runA.log）：
+  ServerHello { <span class="hl">"named group": X25519MLKEM768</span> }   ← 协商混合后量子组
+  Negotiated protocol version: TLSv1.3
+  Cipher: TLS_AES_256_GCM_SHA384 (JDK) / TLS_CHACHA20_POLY1305_SHA256 (BC)</div>
+
+<h3>三条技术路线</h3>
+<table>
+  <tr><th>方案</th><th>技术栈</th><th>SSLContext</th><th>证书</th><th>能力</th></tr>
+  <tr><td><b>A</b></td><td>JDK 27 原生 SunJSSE</td><td><code>getInstance("TLS","SunJSSE")</code></td><td>ECDSA</td><td>混合组 X25519MLKEM768，零依赖</td></tr>
+  <tr><td><b>B</b></td><td>BouncyCastle BCJSSE</td><td><code>getInstance("TLS","BCJSSE")</code></td><td><b>ML-DSA-65</b> / ECDSA</td><td>混合组 + 纯 MLKEM768 + PQC 证书签名</td></tr>
+  <tr><td><b>C</b></td><td>JDK + BC 双栈</td><td>按场景切换 provider</td><td>混合演进</td><td>PQC 优先 + x25519 回退（生产推荐）</td></tr>
+</table>
+
+<h3>方案B 实测（ML-DSA-65 证书 + 混合群组）</h3>
+<div class="flow">[服务端] smtpMldsa=TLSv1.3 / TLS_CHACHA20_POLY1305_SHA256 <span class="hl2">证书=ML-DSA-65</span>
+[client] SMTP 发送 完成 | alice@pqc.local -> bob@pqc.local
+[client] IMAP 连接 完成 | POP3 连接 完成
+[client] SMTP 互操作 完成（JDK↔BC / BC↔JDK ECDSA 证书）</div>
+
+<h2>⑤ 迁移点 P2：PQC-SIGN SASL 认证（ML-DSA 挑战-响应）</h2>
+<div class="grid2">
+<div>
+<pre><code>// PqcSaslClient —— ML-DSA-65 签名挑战
+byte[] input = ("PQC-SIGN\0" + challenge + "\0" + user);
+Signature sig = Signature.getInstance("ML-DSA");
+sig.initSign(privateKey);  sig.update(input);
+resp = user + ":" + base64(sig.sign());
+
+// PqcSaslProvider —— JCA Provider 注册（断点3 对策）
+put("SaslClientFactory.PQC-SIGN",
+    PqcSaslClientFactory.class.getName());
+
+// 会话属性
+mail.smtp.auth.mechanisms = PQC-SIGN
+mail.smtp.sasl.enable = true</code></pre>
+</div>
+<div>
+<div class="flow">
+客户端                              服务器
+ │  AUTH PQC-SIGN                     │
+ │ ◄────── 334 &lt;挑战&gt;                │
+ │ 响应 = user:ML-DSA 签名             │
+ │ ──────►  235 成功 / 535 拒绝        │
+</div>
+<div class="note">✅ 实测：认证发送成功；错误 ML-DSA 私钥被 535 拒绝。</div>
+</div>
+</div>
+
+<h2>⑥ 迁移点 P3：S/MIME 式混合端到端加密</h2>
+<div class="grid2">
+<div>
+<pre><code>// 混合信封：ML-KEM-768 + RSA-OAEP → AES-256-GCM
+KEM.Encapsulator enc = kem.newEncapsulator(mlkemPub);
+KEM.Encapsulated cap = enc.encapsulate();
+byte[] mlkemSs = cap.key().getEncoded();     // 后量子
+byte[] rsaCt  = rsaCipher.doFinal(randomCek); // 经典兜底
+byte[] cek = sha256(mlkemSs || sha256(randomCek));
+AES-256-GCM(cek, data)                        // 内容加密</code></pre>
+</div>
+<div>
+<pre><code>// 混合签名：ML-DSA-65 + Ed25519 双签名
+Signature mldsa = Signature.getInstance("ML-DSA");
+Signature ed    = Signature.getInstance("Ed25519");
+// 两份签名都验证通过才有效（防量子伪造）</code></pre>
+</div>
+</div>
+<div class="note">✅ 实测：明文 87B → 密文 1470B，解密还原=true；混合签名 5407B，验签=true；Angus Mail MimeMessage 承载密文往返成功。<br>
+<span class="muted">说明：RFC 9629 / LAMPS 完成 PQC 证书与 CMS 混合格式标准化后，同一套原语嵌入 BC CMS/OpenPGP 即升级为标准 S/MIME。</span></div>
+
+<h2>⑦ 迁移点 P4：本地凭证量子抗性存储</h2>
+<pre><code>// PqcVault —— 每个 Vault 持有 ML-KEM-768 密钥对
+seal(): ML-KEM 公钥封装随机 DEK → AES-256-GCM 加密明文 → 可落盘 blob
+open(): ML-KEM 私钥解封装 DEK → 解密
+// 格式: "PQCVAULT1" || ML-KEM 密文(1088B) || IV(12B) || AES-GCM 密文</code></pre>
+<div class="note">✅ 实测：明文 23B → blob 1150B，恢复原文匹配=true。</div>
+
+<h2>⑧ 迁移点 P5：混合 DKIM 签名</h2>
+<pre><code>DKIM-Signature:      v=1; a=ed25519-sha256; c=relaxed/relaxed; d=pqc.local; s=pqc; bh=&lt;sha256(body)&gt;; h=from:subject; pk=&lt;pub&gt;; b=&lt;Ed25519 sig&gt;
+X-PQC-DKIM-Signature: v=1; a=mldsa65; ...; b=&lt;ML-DSA-65 sig&gt;
+// 收件端需同时通过两个验签，防量子伪造</code></pre>
+<div class="note">✅ 实测：经典 DKIM a=ed25519-sha256 验证=true；PQC DKIM a=mldsa65 验证=true。</div>
+
+<h2>⑨ 迁移断点与解决方案</h2>
+<table>
+  <tr><th>#</th><th>断点</th><th>现象</th><th>根因</th><th>解决方案（切换依赖 / 自定义）</th><th>状态</th></tr>
+  <tr>
+    <td>1</td><td><b>SocketFactory 静态约定</b></td>
+    <td>仅无参构造 → NoSuchMethodException，回退默认工厂 → PKIX 失败</td>
+    <td>SocketFetcher 反射调用 <code>getMethod("getDefault")</code></td>
+    <td>自定义：补 <code>public static SSLSocketFactory getDefault()</code></td>
+    <td><span class="status ok">已解决</span></td>
+  </tr>
+  <tr>
+    <td>2</td><td><b>强制主机名校验</b></td>
+    <td>信任配置正确仍报 <code>CERTIFICATE_UNKNOWN: No name matching localhost</code></td>
+    <td>SocketFetcher 无条件设置 endpoint identification</td>
+    <td>自定义：证书 CN/SAN 含真实主机名（keytool -ext san=dns:localhost,ip:127.0.0.1）</td>
+    <td><span class="status ok">已解决</span></td>
+  </tr>
+  <tr>
+    <td>3</td><td><b>Sasl 服务注册机制</b></td>
+    <td><code>No authentication mechanisms supported by both server and client</code></td>
+    <td>JDK 27 Sasl 不扫描应用 classpath 的 META-INF/services</td>
+    <td>切换：<code>Security.addProvider(new PqcSaslProvider())</code> 注册 SaslClientFactory</td>
+    <td><span class="status ok">已解决</span></td>
+  </tr>
+  <tr>
+    <td>4</td><td><b>JDK 版本决定 JSSE PQC 能力</b></td>
+    <td>ML-DSA 证书在 JDK JSSE 握手失败；JDK 24-26 无 PQC 群组</td>
+    <td>SunJSSE signature_algorithms 硬编码无 mldsa</td>
+    <td>切换依赖：JDK&lt;27 用 BC BCTLS；等待 IETF LAMPS 标准</td>
+    <td><span class="status warn">有解·依赖BC</span></td>
+  </tr>
+  <tr>
+    <td>5</td><td><b>writetimeout 包装层</b></td>
+    <td>设置 writetimeout 时原始 Socket 被包成 WriteTimeoutSocket</td>
+    <td>SocketFetcher 写超时实现</td>
+    <td>自定义：演示工程不设 writetimeout；生产可保留</td>
+    <td><span class="status ok">已解决</span></td>
+  </tr>
+  <tr>
+    <td>6</td><td><b>octet-stream DCH 缺失</b></td>
+    <td>String 内容 writeTo 报 <code>UnsupportedDataTypeException</code></td>
+    <td>无对应 DataContentHandler</td>
+    <td>切换：<code>DataHandler(new ByteArrayDataSource(bytes,"application/octet-stream"))</code></td>
+    <td><span class="status ok">已解决</span></td>
+  </tr>
+</table>
+
+<h2>⑩ 工程结构</h2>
+<pre><code>angus-mail/
+├── lib/            # 依赖 jar（版本见 ③）
+├── certs/          # CN=localhost+SAN 测试证书（ECDSA / legacy / ML-DSA-65）
+├── logs/           # runA/B/C.log（含 TLS 握手调试）
+├── reports/        # 本报告（.md + .html）
+├── src/pqc/
+│   ├── common/     # PqcSsl / PqcSocketFactory / MailPqcConfig / PqcMailServer / PqcMailCrypto / PqcVault / PqcDkim
+│   ├── sasl/       # PqcSaslClient / PqcSaslClientFactory / PqcSaslProvider
+│   ├── approachA/  # MainA（JDK 原生）
+│   ├── approachB/  # MainB（BouncyCastle）
+│   └── approachC/  # MainC（混合双栈 + P2-P5 全迁移点）
+├── build.ps1       # 编译（纯 javac）
+├── run-all.ps1     # 一键运行三方案 → logs/
+└── pom.xml         # Maven 依赖参考</code></pre>
+
+<h2>⑪ 实施路线</h2>
+<table>
+  <tr><th>阶段</th><th>时间</th><th>动作</th></tr>
+  <tr><td><b>当前</b></td><td>2026</td><td>升 JDK 27+，TLS 走 X25519MLKEM768；本地凭证换 PqcVault（P4）</td></tr>
+  <tr><td><b>近期</b></td><td>2027</td><td>BC 栈 + ML-DSA 证书（P1-B）；OAuth2/口令认证换 PQC-SIGN（P2）；混合 DKIM（P5）</td></tr>
+  <tr><td><b>中期</b></td><td>2029-2030</td><td>LAMPS 标准成熟后混合信封嵌入标准 CMS/OpenPGP（P3）；双证书过渡</td></tr>
+  <tr><td><b>远期</b></td><td>2033+</td><td>CNSA 2.0：全链路纯 ML-KEM/ML-DSA，移除经典回退</td></tr>
+</table>
+
+<footer>Angus Mail PQC 迁移测试报告 · 2026-09-29 · 验证数据取自 logs/runA.log / runB.log / runC.log</footer>
+</div>
+
+<script>
+/* 自包含 Java 语法高亮器（不依赖网络，离线可用） */
+(function () {
+  var KEYWORDS = new Set(
+    ("public private protected class interface enum record sealed permits static final abstract " +
+     "void int long byte short boolean char float double new return if else for while do switch case " +
+     "default break continue throw throws try catch finally import package extends implements this " +
+     "super null true false instanceof synchronized volatile transient native assert var yield " +
+     "exports module requires opens uses provides").split(" "));
+
+  function esc(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  function highlight(code) {
+    var re = /(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|(@[A-Za-z_$][A-Za-z0-9_$]*)|(\b\d+(?:\.\d+)?[lLfFdD]?\b)|([A-Za-z_$][A-Za-z0-9_$]*)|(\s+)|([^\s])/g;
+    var out = "", m, cls, last = 0;
+    while ((m = re.exec(code)) !== null) {
+      out += esc(code.slice(last, m.index));
+      if (m[1]) { cls = "tok-com"; }
+      else if (m[2]) { cls = "tok-str"; }
+      else if (m[3]) { cls = "tok-ann"; }
+      else if (m[4]) { cls = "tok-num"; }
+      else if (m[5]) {
+        var w = m[5], rest = code.slice(re.lastIndex);
+        if (KEYWORDS.has(w)) { cls = "tok-kw"; }
+        else if (/^[A-Z][A-Z0-9_]*$/.test(w)) { cls = "tok-con"; }
+        else if (/^[A-Z]/.test(w)) { cls = "tok-type"; }
+        else if (/^\s*\(/.test(rest)) { cls = "tok-fn"; }
+        else if (/^\s*\./.test(rest)) { cls = "tok-field"; }
+        else { cls = ""; }
+      }
+      else if (m[6]) { out += m[6]; last = re.lastIndex; continue; }
+      else { out += esc(m[7]); last = re.lastIndex; continue; }
+
+      out += cls ? '<span class="' + cls + '">' + esc(m[0]) + "</span>" : esc(m[0]);
+      last = re.lastIndex;
+    }
+    out += esc(code.slice(last));
+    return out;
+  }
+
+  document.querySelectorAll("code").forEach(function (el) {
+    el.innerHTML = highlight(el.textContent);
+  });
+})();
+</script>
+</body>
+</html>
