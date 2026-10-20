@@ -1,6 +1,6 @@
 ﻿{
     "title":  "libSSH2 后量子迁移 — 兼容性矩阵报告",
-    "generated_at":  "2026-10-20T11:44:54.7272119Z",
+    "generated_at":  "2026-10-20T12:45:50.2367903Z",
     "baseline_tool":  "OpenSSH_for_Windows_9.5p2, LibreSSL 3.8.2",
     "configuration":  [
                           {
