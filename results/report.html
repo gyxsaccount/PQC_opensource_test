@@ -133,8 +133,8 @@
       <tr><th>#</th><th>迁移点</th><th>涉及模块/类</th><th>现状算法</th><th>PQC 目标</th><th>状态</th></tr>
       <tr><td>1</td><td>TLS 握手密钥交换</td><td class="mono">SslContextFactory / HTTPS Connector</td><td>ECDHE (X25519)</td><td><b>X25519MLKEM768</b></td><td><span class="pill ok">✅ 已实证</span></td></tr>
       <tr><td>2</td><td>TLS 证书签名</td><td class="mono">keystore 证书 / JSSE</td><td>ECDSA/RSA</td><td>ML-DSA</td><td><span class="pill bad">⛔ 阻断点</span></td></tr>
-      <tr><td>3</td><td>HTTP 摘要认证</td><td class="mono">DigestAuthenticator</td><td>MD5</td><td>SHA-256/SHA3</td><td><span class="pill ok">✅ 已实证</span></td></tr>
-      <tr><td>4</td><td>口令哈希 / Realm</td><td class="mono">Password / Credential</td><td>MD5, SHA-1</td><td>SHA2/SHA3/Argon2</td><td><span class="pill ok">✅ 已实证</span></td></tr>
+      <tr><td>3</td><td>HTTP 摘要认证</td><td class="mono">DigestAuthenticator</td><td>MD5</td><td><b>SHA-384</b></td><td><span class="pill ok">✅ 已实证</span></td></tr>
+      <tr><td>4</td><td>口令哈希 / Realm</td><td class="mono">Password / Credential</td><td>MD5, SHA-1</td><td><b>SHA3-384</b>/Argon2</td><td><span class="pill ok">✅ 已实证</span></td></tr>
       <tr><td>5</td><td>会话安全</td><td class="mono">SessionIdManager</td><td>SecureRandom</td><td>DRBG + 配置</td><td><span class="pill ok">✅ 已实证</span></td></tr>
       <tr><td>6</td><td>OIDC / JWT</td><td class="mono">jetty-openid / JwtDecoder</td><td>RS256/ES256</td><td>ML-DSA (JOSE)</td><td><span class="pill warn">⚠️ 依赖 IETF</span></td></tr>
       <tr><td>7</td><td>HttpClient 出站 TLS</td><td class="mono">HttpClient / SslContextFactory.Client</td><td>ECDHE (X25519)</td><td><b>X25519MLKEM768</b></td><td><span class="pill ok">✅ 已实证</span></td></tr>
@@ -271,52 +271,52 @@ keytool -genkeypair -alias mldsa -keyalg <span class="ok">ML-DSA</span> -groupna
 
   <!-- ============ 迁移点3+4 ============ -->
   <div class="card">
-    <h2><span class="num">4</span> 迁移点3+4：摘要认证 / 口令哈希 → SHA2/SHA3 <span class="pill ok">✅ 通过</span></h2>
+    <h2><span class="num">4</span> 迁移点3+4：摘要认证 / 口令哈希 → 384 位 (SHA-384/SHA3-384) <span class="pill ok">✅ 通过</span></h2>
 
-    <h3>Digest 认证 SHA-256 challenge-response 全链路</h3>
+    <h3>Digest 认证 SHA-384 (384 位) challenge-response 全链路</h3>
     <div class="flow">
       <div class="step arrow"><span class="st">1</span><div class="sd">GET /protected/hello</div></div>
-      <div class="step arrow"><span class="st">2</span><div class="sd">401 + algorithm=SHA-256</div></div>
+      <div class="step arrow"><span class="st">2</span><div class="sd">401 + algorithm=SHA-384</div></div>
       <div class="step arrow"><span class="st">3</span><div class="sd">HA1/HA2/response 计算</div></div>
       <div class="step"><span class="st">4</span><div class="sd ok">200 · authenticated as alice</div></div>
     </div>
 
-    <h3 style="margin-top:14px">摘要算法可用性与输出长度</h3>
+    <h3 style="margin-top:14px">摘要算法可用性与输出长度（384 位 = 迁移目标）</h3>
     <div class="two">
       <div>
         <div class="bar-row"><span class="bar-label">MD5 (迁移前)</span><div class="bar-track"><div class="bar-fill warn" style="width:25%">32</div></div><span class="bar-val">32 hex</span></div>
         <div class="bar-row"><span class="bar-label">SHA-1 (迁移前)</span><div class="bar-track"><div class="bar-fill warn" style="width:31%">40</div></div><span class="bar-val">40 hex</span></div>
-        <div class="bar-row"><span class="bar-label">SHA-256 / SHA3-256</span><div class="bar-track"><div class="bar-fill ok" style="width:50%">64</div></div><span class="bar-val">64 hex</span></div>
-        <div class="bar-row"><span class="bar-label">SHA-384 / SHA3-384</span><div class="bar-track"><div class="bar-fill ok" style="width:75%">96</div></div><span class="bar-val">96 hex</span></div>
+        <div class="bar-row"><span class="bar-label">SHA-256 / SHA3-256 (中间态)</span><div class="bar-track"><div class="bar-fill info" style="width:50%">64</div></div><span class="bar-val">64 hex</span></div>
+        <div class="bar-row"><span class="bar-label"><b>SHA-384 / SHA3-384 (目标)</b></span><div class="bar-track"><div class="bar-fill ok" style="width:75%">96</div></div><span class="bar-val"><b>96 hex (384 位)</b></span></div>
         <div class="bar-row"><span class="bar-label">SHA-512 / SHA3-512</span><div class="bar-track"><div class="bar-fill ok" style="width:100%">128</div></div><span class="bar-val">128 hex</span></div>
       </div>
       <div>
-        <h3>Jetty Credential 前缀支持</h3>
+        <h3>Jetty Credential 前缀支持（含 384 位目标）</h3>
         <table>
           <tr><th>前缀</th><th>类型</th><th>状态</th></tr>
           <tr><td class="mono">CRYPT:</td><td>Crypt</td><td><span class="pill ok">OK</span></td></tr>
           <tr><td class="mono">MD5:</td><td>MD5</td><td><span class="pill ok">OK</span></td></tr>
-          <tr><td class="mono">MD:SHA-256:</td><td>MD</td><td><span class="pill ok">OK</span></td></tr>
-          <tr><td class="mono">MD:SHA3-256:</td><td>MD</td><td><span class="pill ok">OK</span></td></tr>
+          <tr><td class="mono">MD:SHA-384:</td><td>MD</td><td><span class="pill ok">OK</span></td></tr>
+          <tr><td class="mono">MD:SHA3-384:</td><td>MD</td><td><span class="pill ok">OK</span></td></tr>
           <tr><td class="mono">MD:SHA3-512:</td><td>MD</td><td><span class="pill ok">OK</span></td></tr>
         </table>
-        <div class="note ok" style="margin-top:8px">SHA3-256 校验链路：正确密码 <b>true</b> / 错误密码 <b>false</b> ✅</div>
+        <div class="note ok" style="margin-top:8px"><b>SHA3-384 校验链路</b>：正确密码 <b>true</b> / 错误密码 <b>false</b> ✅</div>
       </div>
     </div>
 
-    <h3 style="margin-top:16px">🔧 代码改造点（改造前 / 改造后）</h3>
-    <div class="codehead"><span class="tag">迁移点3 · Digest 认证</span><span class="file">src/DigestAuthPqcTest.java</span><span>Jetty 12 默认即 SHA-256 (RFC 7616)</span></div>
-    <div class="before">▼ 改造前：算法未显式指定（旧版本默认 MD5）+ 凭证存 MD5 哈希</div>
+    <h3 style="margin-top:16px">🔧 代码改造点（改造前 / 改造后，目标 = 384 位）</h3>
+    <div class="codehead"><span class="tag">迁移点3 · Digest 认证</span><span class="file">src/DigestAuthPqcTest.java</span><span>Jetty 12 默认 SHA-256，目标切换为 SHA-384 (384 位)</span></div>
+    <div class="before">▼ 改造前：算法未显式指定（旧版本默认 MD5 / Jetty 12 默认 SHA-256）+ 凭证存 MD5 哈希</div>
     <div class="code">
 <span class="ctx"><span class="tp">DigestAuthenticator</span> digest = <span class="kw">new</span> <span class="tp">DigestAuthenticator</span>();</span>
-<span class="del">-    <span class="cm">// 旧: 未显式指定算法, 挑战头 algorithm=MD5</span></span>
+<span class="del">-    <span class="cm">// 旧: 未显式指定算法 (Jetty 默认 SHA-256 / 旧版 MD5)</span></span>
 <span class="ctx"><span class="tp">UserStore</span> us = <span class="kw">new</span> <span class="tp">UserStore</span>();</span>
 <span class="del">- us.<span class="fn">addUser</span>(<span class="st">"alice"</span>, <span class="tp">Credential</span>.<span class="fn">getCredential</span>(<span class="st">"MD5:"</span> + md5Hex), roles); <span class="cm">// 旧: MD5 摘要</span></span>
     </div>
-    <div class="after">▼ 改造后：显式 SHA-256 + 明文凭证由 Jetty 计算 HA1（新增/修改 2 行）</div>
+    <div class="after">▼ 改造后：显式 SHA-384 (384 位) + 明文凭证由 Jetty 计算 HA1（新增/修改 2 行）</div>
     <div class="code">
 <span class="ctx"><span class="tp">DigestAuthenticator</span> digest = <span class="kw">new</span> <span class="tp">DigestAuthenticator</span>();</span>
-<span class="add">+ digest.<span class="fn">setAlgorithm</span>(<span class="st">"SHA-256"</span>);        <span class="cm">// ★ 关键: RFC 7616 SHA-256 (默认已是, 显式声明)</span></span>
+<span class="add">+ digest.<span class="fn">setAlgorithm</span>(<span class="st">"SHA-384"</span>);        <span class="cm">// ★ 关键: 384 位迁移目标 (覆盖默认 SHA-256)</span></span>
 <span class="ctx">security.<span class="fn">setAuthenticator</span>(digest);</span>
 <span class="ctx"><span class="tp">UserStore</span> us = <span class="kw">new</span> <span class="tp">UserStore</span>();</span>
 <span class="hl">▍us.<span class="fn">addUser</span>(<span class="st">"alice"</span>, <span class="tp">Credential</span>.<span class="fn">getCredential</span>(<span class="st">"password"</span>), roles);  <span class="cm">// ★ 关键: 存明文, 由 Digest.check() 计算 HA1</span></span>
@@ -327,16 +327,16 @@ keytool -genkeypair -alias mldsa -keyalg <span class="ok">ML-DSA</span> -groupna
 <span class="del">- <span class="tp">Credential</span> md5  = <span class="tp">Credential</span>.<span class="fn">getCredential</span>(<span class="st">"MD5:"</span> + md5Hex);     <span class="cm">// 128-bit</span></span>
 <span class="del">- <span class="tp">Credential</span> sha1 = <span class="tp">Credential</span>.<span class="fn">getCredential</span>(<span class="st">"SHA-1:"</span> + sha1Hex);    <span class="cm">// 160-bit</span></span>
     </div>
-    <div class="after">▼ 改造后（SHA3 系，CNSA 2.0 推荐）</div>
+    <div class="after">▼ 改造后（384 位，CNSA 2.0 推荐）</div>
     <div class="code">
-<span class="add">+ <span class="tp">Credential</span> c1 = <span class="tp">Credential</span>.<span class="fn">getCredential</span>(<span class="st">"MD:SHA-256:"</span> + sha256Hex);   <span class="cm">// 256-bit</span></span>
-<span class="add">+ <span class="tp">Credential</span> c2 = <span class="tp">Credential</span>.<span class="fn">getCredential</span>(<span class="st">"MD:SHA3-256:"</span> + sha3Hex);    <span class="cm">// 256-bit SHA3 ★</span></span>
+<span class="add">+ <span class="tp">Credential</span> c1 = <span class="tp">Credential</span>.<span class="fn">getCredential</span>(<span class="st">"MD:SHA-384:"</span> + sha384Hex);   <span class="cm">// 384-bit</span></span>
+<span class="add">+ <span class="tp">Credential</span> c2 = <span class="tp">Credential</span>.<span class="fn">getCredential</span>(<span class="st">"MD:SHA3-384:"</span> + sha3_384Hex); <span class="cm">// 384-bit SHA3 ★ 迁移目标</span></span>
 <span class="add">+ <span class="tp">Credential</span> c3 = <span class="tp">Credential</span>.<span class="fn">getCredential</span>(<span class="st">"MD:SHA3-512:"</span> + sha3_512Hex); <span class="cm">// 512-bit SHA3</span></span>
 <span class="ctx"><span class="cm">// 校验链路完全不变:</span></span>
 <span class="ctx">boolean ok = c2.<span class="fn">check</span>(<span class="st">"password"</span>);   <span class="cm">// → true (实测通过)</span></span>
 <span class="ctx">boolean bad = c2.<span class="fn">check</span>(<span class="st">"wrong"</span>);    <span class="cm">// → false (实测通过)</span></span>
     </div>
-    <div class="note">Realm 文件格式对应：<span class="mono">alice: MD:SHA3-256:&lt;64hex&gt;, user</span>；需同步评估摘要长度增长对 DB 字段的影响（SHA3-384 +50%、SHA3-512 +100%）。</div>
+    <div class="note">Realm 文件格式对应：<span class="mono">alice: MD:SHA3-384:&lt;96hex&gt;, user</span>（384 位）；需同步评估摘要长度增长对 DB 字段的影响（SHA3-384 为基准，SHA3-512 +33%）。</div>
   </div>
 
   <!-- ============ 迁移点5 ============ -->
@@ -539,7 +539,7 @@ keytool -genkeypair -alias mldsa -keyalg <span class="ok">ML-DSA</span> -groupna
     <h2><span class="num">9</span> 迁移阶段路线图（CNSA 2.0 对齐）</h2>
     <div class="tl">
       <div class="tl-item done"><div class="year">当前 · 2026</div>
-        <div class="desc">升级 JDK 27+，HTTPS/HttpClient/HTTP3 自动获得 <b>X25519MLKEM768</b>；证书保持 ECDSA；Digest 认证用 SHA-256；口令哈希切 SHA3 <span class="pill ok">可落地</span></div>
+        <div class="desc">升级 JDK 27+，HTTPS/HttpClient/HTTP3 自动获得 <b>X25519MLKEM768</b>；证书保持 ECDSA；Digest 认证用 <b>SHA-384</b>；口令哈希切 <b>SHA3-384</b>（384 位） <span class="pill ok">可落地</span></div>
       </div>
       <div class="tl-item warn"><div class="year">中期 · 2027-2028</div>
         <div class="desc">待 JSSE 支持 PQC 签名算法后引入<b>混合证书</b>（经典+PQC 双签名）；OIDC 提升经典强度 <span class="pill warn">依赖上游</span></div>
@@ -558,7 +558,7 @@ keytool -genkeypair -alias mldsa -keyalg <span class="ok">ML-DSA</span> -groupna
   </div>
 
   <footer>
-    Jetty 12 PQC 迁移测试 · v1.2 · 生成于 2026-09-21 · 复现：<span class="mono">cd D:\PQC-test\jetty &amp;&amp; run_jetty_pqc.bat</span>
+    Jetty 12 PQC 迁移测试 · v1.3 · 生成于 2026-09-21 · 复现：<span class="mono">cd D:\PQC-test\jetty &amp;&amp; run_jetty_pqc.bat</span>
     <br>详细数据见 <span class="mono">Jetty_PQC_迁移测试报告.md</span> 与 <span class="mono">src/</span> 各 demo 源码
   </footer>
 </div>

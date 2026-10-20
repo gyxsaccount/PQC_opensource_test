@@ -12,8 +12,8 @@
 |--------|---------|---------|------|
 | 1. TLS 密钥交换 | ECDHE(X25519) | **X25519MLKEM768** (混合组) | ✅ 可迁移(已实证) |
 | 2. 证书签名 | ECDSA/RSA | ML-DSA | ⚠️ **阻断点**(已实证) |
-| 3. HTTP 摘要认证 | MD5 | SHA-256/SHA3 | ✅ 可迁移(已实证) |
-| 4. 口令哈希/Realm | MD5/SHA-1 | SHA2/SHA3/Argon2 | ✅ 可迁移(已实证) |
+| 3. HTTP 摘要认证 | MD5 | **SHA-384** (384 位) | ✅ 可迁移(已实证) |
+| 4. 口令哈希/Realm | MD5/SHA-1 | **SHA3-384** (384 位)/Argon2 | ✅ 可迁移(已实证) |
 | 5. 会话安全 | SecureRandom | 增强熵+配置 | ✅ 可迁移(已实证) |
 | 6. OIDC/JWT | RS256/ES256 | ML-DSA(JOSE) | ⚠️ 依赖 IETF |
 | 7. HttpClient 出站 TLS | ECDHE | X25519MLKEM768 | ✅ 可迁移(已实证) |
@@ -115,65 +115,66 @@ ssl.start();   // ✅ 加载成功, 但真实握手在此之后失败
 
 **过渡期方案**: 保持 EC/RSA 证书签名 + X25519MLKEM768 混合密钥交换(已达 CNSA 2.0 第一阶段); 证书签名迁移等待 JSSE 支持 ML-DSA 或采用混合证书。
 
-### 3.3 迁移点3: HTTP 摘要认证 → SHA-256 ✅
+### 3.3 迁移点3: HTTP 摘要认证 → SHA-384 (384 位) ✅
 
 **实现**: `src/DigestAuthPqcTest.java`
 ee10 ServletContextHandler + ConstraintSecurityHandler + DigestAuthenticator, 完整 HTTP Digest challenge-response:
 
 ```
 未认证请求 -> 401 (挑战) OK
-WWW-Authenticate: Digest realm="pqc-realm", ..., algorithm=SHA-256, qop="auth"
-HA1(SHA-256)=674147246d5c32792b...
+WWW-Authenticate: Digest realm="pqc-realm", ..., algorithm=SHA-384, qop="auth"
+HA1(SHA-384)=...
 Digest 认证请求 -> 200 (OK)
 响应: Protected resource OK - authenticated as alice
+=> Digest 认证 + SHA-384 (384位) 挑战-应答全链路验证通过
 ```
 
-**结论**: Jetty 12 `DigestAuthenticator` 默认算法已为 **SHA-256 (RFC 7616)**; 摘要长度从 MD5 的 32 hex 增至 64 hex (32 字节), 认证链路完整可用。
+**结论**: Jetty 12 `DigestAuthenticator` 默认算法为 **SHA-256 (RFC 7616)**, 通过 `setAlgorithm("SHA-384")` 显式切换至 **384 位**; 摘要长度 96 hex (48 字节), 认证链路完整可用。
 
 **代码改造点** (改造前 → 改造后):
 ```java
-// 改造前: 算法未显式指定 (旧版默认 MD5) + 凭证存 MD5 哈希
+// 改造前: 算法未显式指定 (旧版默认 MD5 / Jetty 12 默认 SHA-256) + 凭证存 MD5 哈希
 DigestAuthenticator digest = new DigestAuthenticator();
-- // 旧: 未显式指定算法, 挑战头 algorithm=MD5
+- // 旧: 未显式指定算法, 挑战头 algorithm=MD5 (Jetty 12 默认 SHA-256)
 UserStore us = new UserStore();
 - us.addUser("alice", Credential.getCredential("MD5:" + md5Hex), roles);
 
-// 改造后: 显式 SHA-256 + 明文凭证由 Jetty 计算 HA1
+// 改造后: 显式 SHA-384 (384 位) + 明文凭证由 Jetty 计算 HA1
 DigestAuthenticator digest = new DigestAuthenticator();
-+ digest.setAlgorithm("SHA-256");                        // ★ 关键: RFC 7616
++ digest.setAlgorithm("SHA-384");                        // ★ 关键: 384 位迁移目标 (覆盖默认 SHA-256)
 UserStore us = new UserStore();
 + us.addUser("alice", Credential.getCredential("password"), roles);   // ★ 关键: 存明文, 由 Digest.check() 计算 HA1
 ```
 - 改造类: `ConstraintSecurityHandler` + `DigestAuthenticator` (jetty-ee10-servlet)
 - API 差异: Jetty 12 的 `Constraint` 为接口, 用 `new Constraint.Builder().name("digest").roles("user").build()`
 
-### 3.4 迁移点4: 口令哈希/Realm → SHA2/SHA3 ✅
+### 3.4 迁移点4: 口令哈希/Realm → SHA3-384 (384 位) ✅
 
 **实现**: `src/PasswordHashPqcTest.java`
 
 - JCE 层面 MD5/SHA-1/SHA2/SHA3 全部可用
-- Jetty `Credential.getCredential()` 支持 `CRYPT:`, `MD5:`, `MD:<算法>:` 前缀, 可无缝切换 SHA3:
+- Jetty `Credential.getCredential()` 支持 `CRYPT:`, `MD5:`, `MD:<算法>:` 前缀, 可无缝切换 SHA3-384 (384 位):
 ```
-MD:SHA3-256:c0067d4a... -> MD [OK]   校验正确密码: true, 校验错误密码: false
+MD:SHA3-384:9c1565e99afa... -> MD [OK]   校验正确密码: true, 校验错误密码: false
 ```
-- 摘要长度增长: SHA-256→SHA3-256 无增长 (64 hex), SHA-384/SHA3-384 +50%, 需评估存储字段。
+- 摘要长度增长 (基准=SHA3-384): SHA3-384 96 hex (384 位); SHA3-256 64 hex (-33%), SHA3-512 128 hex (+33%), 需评估存储字段。
 
 **代码改造点** (改造前 → 改造后):
 ```java
 // 改造前 (弱哈希, 量子不安全):
 - Credential md5  = Credential.getCredential("MD5:" + md5Hex);    // 128-bit
 - Credential sha1 = Credential.getCredential("SHA-1:" + sha1Hex); // 160-bit
-// 改造后 (SHA3 系, CNSA 2.0 推荐):
-+ Credential c1 = Credential.getCredential("MD:SHA-256:" + sha256Hex);
-+ Credential c2 = Credential.getCredential("MD:SHA3-256:" + sha3Hex);   // ★ 256-bit SHA3
+// 改造后 (384 位, CNSA 2.0 推荐):
++ Credential c1 = Credential.getCredential("MD:SHA-384:" + sha384Hex);   // 384-bit
++ Credential c2 = Credential.getCredential("MD:SHA3-384:" + sha3_384Hex); // 384-bit SHA3 ★ 迁移目标
 + Credential c3 = Credential.getCredential("MD:SHA3-512:" + sha3_512Hex);
 // 校验链路完全不变:
 boolean ok = c2.check("password");   // → true (实测通过)
 boolean bad = c2.check("wrong");     // → false (实测通过)
 ```
 - 改造类: `org.eclipse.jetty.util.security.Credential` / `Password`
-- Realm 文件格式: `alice: MD:SHA3-256:<64hex>, user`
-- 需评估: 摘要长度增长对 DB 字段影响 (SHA3-384 +50%, SHA3-512 +100%)
+- Realm 文件格式: `alice: MD:SHA3-384:<96hex>, user`
+- 需评估: 摘要长度增长对 DB 字段影响 (基准 SHA3-384, SHA3-256 -33%, SHA3-512 +33%)
 
 ### 3.5 迁移点5: 会话安全 ✅
 
@@ -284,7 +285,7 @@ server.addConnector(connector);
 
 | 阶段 | 时间 | 行动 |
 |------|------|------|
-| **当前** | 2026 | 升级 JDK 27+, HTTPS/HttpClient/HTTP3 自动获得 X25519MLKEM768 混合密钥交换; 证书保持 ECDSA; Digest 认证用 SHA-256; 口令哈希切 SHA3 |
+| **当前** | 2026 | 升级 JDK 27+, HTTPS/HttpClient/HTTP3 自动获得 X25519MLKEM768 混合密钥交换; 证书保持 ECDSA; Digest 认证用 SHA-384; 口令哈希切 SHA3-384 (384 位) |
 | **中期** | 2027-2028 | 待 JSSE 支持 PQC 签名算法后, 引入混合证书 (经典+PQC 双签名); OIDC 提升经典强度 |
 | **远期** | 2029+ | JOSE PQC 标准落地后迁移 JWT; 证书全面 ML-DSA/SLH-DSA; CNSA 2.0 达标 |
 
@@ -298,7 +299,7 @@ D:\PQC-test\jetty\
 │   ├── JettyPqcServer.java        迁移点1: HTTPS 服务器 + X25519MLKEM768
 │   ├── JettyPqcClient.java        迁移点7: HttpClient 出站 TLS
 │   ├── MldsaCertBlockTest.java    迁移点2: ML-DSA 证书阻断验证
-│   ├── DigestAuthPqcTest.java     迁移点3: Digest 认证 SHA-256
+│   ├── DigestAuthPqcTest.java     迁移点3: Digest 认证 SHA-384
 │   ├── PasswordHashPqcTest.java   迁移点4: 口令哈希迁移
 │   ├── SessionSecurityPqcTest.java 迁移点5: 会话安全审计
 │   ├── OidcJwtPqcTest.java        迁移点6: JWT 算法评估

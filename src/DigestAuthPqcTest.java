@@ -18,27 +18,30 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 迁移点3: HTTP Digest 摘要认证 —— MD5 -> SHA-256 / SHA3 迁移验证
+ * 迁移点3: HTTP Digest 摘要认证 —— MD5 -> SHA-384 / SHA3-384 迁移验证
  *
  * Jetty 12 的 DigestAuthenticator 默认算法为 SHA-256 (RFC 7616)，
+ * 迁移目标按 384 位哈希强度执行 (SHA-384 / SHA3-384)。
  * 本 demo 验证:
  *   1. Digest 认证流程 (挑战-应答)
- *   2. 迁移前: SHA-256 (已默认) 与 传统 MD5 对比
- *   3. 迁移目标: SHA-256 / SHA3-256 可用性与摘要长度对比
+ *   2. 迁移前: SHA-256 (Jetty 默认) 与 传统 MD5 对比
+ *   3. 迁移目标: SHA-384 (384 位) 全链路可用性验证
  *
  * 运行: java -cp lib/*;out DigestAuthPqcTest 18446
  */
 public class DigestAuthPqcTest {
 
+    static final String TARGET_ALGORITHM = "SHA-384";
+
     public static void main(String[] args) throws Exception {
         int port = args.length > 0 ? Integer.parseInt(args[0]) : 18446;
 
-        System.out.println("=== 迁移点3: Digest 认证 哈希算法迁移 (MD5 -> SHA-256/SHA3) ===");
+        System.out.println("=== 迁移点3: Digest 认证 哈希算法迁移 (MD5 -> SHA-384/SHA3-384) ===");
         System.out.println("JDK: " + System.getProperty("java.version"));
 
-        // 0) 算法可用性对比 (迁移前 / 迁移目标)
-        String[] algos = {"MD5", "SHA-256", "SHA-512", "SHA3-256", "SHA3-384", "SHA3-512"};
-        String[] marks = {"迁移前(旧)", "迁移目标", "迁移目标", "迁移目标", "迁移目标", "迁移目标"};
+        // 0) 算法可用性对比 (迁移前 / 迁移目标, 384 位为迁移目标)
+        String[] algos = {"MD5", "SHA-256", "SHA-384", "SHA-512", "SHA3-256", "SHA3-384", "SHA3-512"};
+        String[] marks = {"迁移前(旧)", "中间态", "迁移目标(384位)", "迁移目标", "中间态", "迁移目标(384位)", "迁移目标"};
         System.out.println("\n[0] 摘要算法可用性 (RFC 7616 digest 底层依赖):");
         for (int i = 0; i < algos.length; i++) {
             try {
@@ -50,7 +53,7 @@ public class DigestAuthPqcTest {
             }
         }
 
-        // 1) 启动带 Digest 认证的 Jetty (默认 SHA-256)
+        // 1) 启动带 Digest 认证的 Jetty (显式 SHA-384, 384 位迁移目标)
         Server server = new Server();
         ServerConnector connector = new ServerConnector(server);
         connector.setPort(port);
@@ -58,13 +61,15 @@ public class DigestAuthPqcTest {
 
         ConstraintSecurityHandler security = new ConstraintSecurityHandler();
         security.setRealmName("pqc-realm");
-        security.setAuthenticator(new DigestAuthenticator());
+        DigestAuthenticator digest = new DigestAuthenticator();
+        digest.setAlgorithm(TARGET_ALGORITHM);   // ★ 迁移目标: SHA-384 (384 位)
+        security.setAuthenticator(digest);
 
         HashLoginService loginService = new HashLoginService();
         loginService.setName("pqc-realm");
         UserStore userStore = new UserStore();
         // 用户凭证: Digest.check() 会用存储凭证重新计算 HA1 = H(username:realm:password),
-        // 因此存储明文密码即可 (SHA-256 摘要由 Jetty 在 challenge 时计算, 算法 = SHA-256)
+        // 因此存储明文密码即可 (SHA-384 摘要由 Jetty 在 challenge 时计算, 算法 = SHA-384)
         userStore.addUser("alice", Credential.getCredential("password"), new String[]{"user"});
         loginService.setUserStore(userStore);
         security.setLoginService(loginService);
@@ -101,10 +106,10 @@ public class DigestAuthPqcTest {
         runRealDigestFlow(port);
 
         server.stop();
-        System.out.println("\n=== 迁移点3 结论: Digest 认证已支持 SHA-256 (RFC 7616), 可平滑迁移, 无阻断 ===");
+        System.out.println("\n=== 迁移点3 结论: Digest 认证已切换至 SHA-384 (384 位), 可平滑迁移, 无阻断 ===");
     }
 
-    /** 真实流程: 1) 无凭证请求->401 带 nonce; 2) 计算 SHA-256 digest response; 3) 带 Authorization 重发->200。 */
+    /** 真实流程: 1) 无凭证请求->401 带 nonce; 2) 计算 SHA-384 digest response; 3) 带 Authorization 重发->200。 */
     static void runRealDigestFlow(int port) throws Exception {
         String username = "alice";
         String realm = "pqc-realm";
@@ -129,7 +134,7 @@ public class DigestAuthPqcTest {
 
         // 解析 nonce
         String nonce = null;
-        String algorithm = "SHA-256";
+        String algorithm = TARGET_ALGORITHM;
         java.util.regex.Matcher m = java.util.regex.Pattern.compile("nonce=\"([^\"]+)\"").matcher(wwwAuth);
         if (m.find()) nonce = m.group(1);
         java.util.regex.Matcher m2 = java.util.regex.Pattern.compile("algorithm=([^, ]+)").matcher(wwwAuth);
@@ -165,7 +170,7 @@ public class DigestAuthPqcTest {
         conn1.disconnect();
         System.out.println("    Digest 认证请求 -> " + status1 + (status1 == 200 ? " (OK)" : " (异常)"));
         System.out.println("    响应: " + body.trim());
-        System.out.println("    => " + (status1 == 200 ? "Digest 认证 + SHA-256 挑战-应答全链路验证通过" : "验证失败"));
+        System.out.println("    => " + (status1 == 200 ? "Digest 认证 + SHA-384 (384位) 挑战-应答全链路验证通过" : "验证失败"));
     }
 
     static String hex(byte[] data) {

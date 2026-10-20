@@ -91,7 +91,7 @@ java -cp "lib\*;out" JettyPqcClient https://localhost:18443/hello
 # 迁移点 2：ML-DSA 证书阻断验证
 java -cp "lib\*;out" MldsaCertBlockTest etc\mldsa.p12 18445
 
-# 迁移点 3：Digest 认证 SHA-256
+# 迁移点 3：Digest 认证 SHA-384
 java -cp "lib\*;out" DigestAuthPqcTest 18446
 
 # 迁移点 4：口令哈希迁移
@@ -124,12 +124,14 @@ java -cp "lib\*;out" Http3PqcTest
   [ OK ] Jetty SslContextFactory 加载 ML-DSA 证书: 成功
   [TLS] 握手失败 (预期): SSLHandshakeException -> (handshake_failure) No available authentication scheme
 
-[3/9] MigPoint3: Digest auth hash migration
+[3/9] MigPoint3: Digest auth hash migration (SHA-384)
+  401 + algorithm=SHA-384 挑战
   Digest 认证请求 -> 200 (OK)  / 响应: Protected resource OK - authenticated as alice
+  => Digest 认证 + SHA-384 (384位) 挑战-应答全链路验证通过
 
-[4/9] MigPoint4: Password/Realm hash migration
+[4/9] MigPoint4: Password/Realm hash migration (SHA3-384)
   校验正确密码: true, 校验错误密码: false
-  => 迁移后哈希校验链路可用
+  => 迁移后哈希校验链路可用 (SHA3-384, 384 位)
 
 [5/9] MigPoint5: Session security audit
   生成 10000 个, 重复=0, 唯一=是
@@ -163,7 +165,7 @@ java -cp "lib\*;out" Http3PqcTest
 | 级别 | 含义 | 涉及迁移点 |
 |------|------|-----------|
 | **实机握手验证** | 真实 TLS 1.3 握手/HTTP 请求通过，且客户端仅通告 PQC 单组 `X25519MLKEM768` 仍成功 → 严格证明服务器协商了 PQC 组 | 1, 7 |
-| **链路验证** | 完整业务链路跑通（401 挑战 → SHA-256 response → 200；SHA3 凭证生成/校验；10000 次会话 ID 唯一性） | 3, 4, 5 |
+| **链路验证** | 完整业务链路跑通（401 挑战 → SHA-384 response → 200；SHA3-384 凭证生成/校验；10000 次会话 ID 唯一性） | 3, 4, 5 |
 | **评估/断言验证** | 通过 API 探测断言"算法不可用"或"依赖缺失"（`ClassNotFound` / `ParseException`），并给出根因 | 2, 6, 8 |
 
 **必须注意的边界：**
@@ -183,6 +185,7 @@ java -cp "lib\*;out" Http3PqcTest
 | v1.0 | 2026-09-21 | 首版：8 个迁移点实现 + 实机验证 + 可视化报告（`report.html`）；JDK 27 / Jetty 12.1.13 / BC 1.86 |
 | v1.1 | 2026-09-21 | 报告补充各迁移点**代码改造点**（含代码片段、API 差异、阻断定位）；修复代码块换行显示 |
 | v1.2 | 2026-09-21 | 代码改造点升级为**改造前/改造后 diff 对比**并高亮（`+` 新增 / `-` 删除 / ★ 关键行） |
+| v1.3 | 2026-09-21 | **哈希迁移目标切换为 384 位**：Digest 认证 SHA-256→**SHA-384**，口令哈希 SHA3-256→**SHA3-384**，更新代码/报告/README |
 
 ---
 
@@ -194,8 +197,8 @@ java -cp "lib\*;out" Http3PqcTest
 |---|--------|---------|---------|------|
 | 1 | TLS 密钥交换 | ECDHE(X25519) | **X25519MLKEM768** | ✅ 可迁移（已实证） |
 | 2 | TLS 证书签名 | ECDSA/RSA | ML-DSA | ⛔ **阻断** |
-| 3 | HTTP 摘要认证 | MD5 | SHA-256/SHA3 | ✅ 可迁移（已实证） |
-| 4 | 口令哈希/Realm | MD5/SHA-1 | SHA2/SHA3/Argon2 | ✅ 可迁移（已实证） |
+| 3 | HTTP 摘要认证 | MD5 | SHA-384 | ✅ 可迁移（已实证） |
+| 4 | 口令哈希/Realm | MD5/SHA-1 | SHA3-384/Argon2 | ✅ 可迁移（已实证） |
 | 5 | 会话安全 | SecureRandom | DRBG+配置 | ✅ 可迁移（已实证） |
 | 6 | OIDC/JWT | RS256/ES256 | ML-DSA(JOSE) | ⚠️ 依赖 IETF |
 | 7 | HttpClient 出站 TLS | ECDHE(X25519) | X25519MLKEM768 | ✅ 可迁移（已实证） |
