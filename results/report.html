@@ -337,6 +337,7 @@ keytool -genkeypair -alias mldsa -keyalg <span class="ok">ML-DSA</span> -groupna
 <span class="ctx">boolean bad = c2.<span class="fn">check</span>(<span class="st">"wrong"</span>);    <span class="cm">// → false (实测通过)</span></span>
     </div>
     <div class="note">Realm 文件格式对应：<span class="mono">alice: MD:SHA3-384:&lt;96hex&gt;, user</span>（384 位）；需同步评估摘要长度增长对 DB 字段的影响（SHA3-384 为基准，SHA3-512 +33%）。</div>
+    <div class="note err"><b>⚠️ 算法兼容性边界（迁移点 3）</b>：HTTP Digest 是"无状态挑战-应答"协议，服务器发起 <span class="mono">algorithm=SHA-384</span> 挑战时<b>无法预先探测客户端是否支持该算法</b>——response 由客户端按挑战算法计算、服务器同算法复核。<b>本测试客户端为自研 Java 客户端，只证明 Jetty <span class="mono">setAlgorithm()</span> 能驱动 SHA-384 走完整链路，不能证明真实第三方客户端（浏览器/curl 等）支持</b>。且 SHA-384 并非 RFC 7616 注册算法（仅 MD5/SHA-256/SHA-512-256）。生产落地建议：多算法挑战 <span class="mono">algorithm=SHA-384, algorithm=SHA-256</span> 或跟随 RFC 7616 注册算法。</div>
   </div>
 
   <!-- ============ 迁移点5 ============ -->
@@ -558,7 +559,7 @@ keytool -genkeypair -alias mldsa -keyalg <span class="ok">ML-DSA</span> -groupna
   </div>
 
   <footer>
-    Jetty 12 PQC 迁移测试 · v1.3 · 生成于 2026-09-21 · 复现：<span class="mono">cd D:\PQC-test\jetty &amp;&amp; run_jetty_pqc.bat</span>
+    Jetty 12 PQC 迁移测试 · v1.4 · 生成于 2026-09-21 · 复现：<span class="mono">cd D:\PQC-test\jetty &amp;&amp; run_jetty_pqc.bat</span>
     <br>详细数据见 <span class="mono">Jetty_PQC_迁移测试报告.md</span> 与 <span class="mono">src/</span> 各 demo 源码
   </footer>
 </div>

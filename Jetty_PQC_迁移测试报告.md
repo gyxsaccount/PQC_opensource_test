@@ -148,6 +148,10 @@ UserStore us = new UserStore();
 - 改造类: `ConstraintSecurityHandler` + `DigestAuthenticator` (jetty-ee10-servlet)
 - API 差异: Jetty 12 的 `Constraint` 为接口, 用 `new Constraint.Builder().name("digest").roles("user").build()`
 
+> **⚠️ 算法兼容性边界**：HTTP Digest 是"无状态挑战-应答"协议，服务器发起 `algorithm=SHA-384` 挑战时**无法预先探测客户端是否支持该算法**——response 由客户端按挑战算法计算、服务器同算法复核（RFC 7616 §3.9 通过重复 `algorithm` 参数提供多算法列表让客户端选择）。
+> 本测试的客户端为自研 Java 客户端（按挑战头动态选算法），**只证明 Jetty `setAlgorithm()` 能驱动 SHA-384 走完整挑战-应答链路，不能证明真实第三方客户端（浏览器/curl 等）支持**。且 SHA-384 并非 RFC 7616 注册算法（仅 MD5 / SHA-256 / SHA-512-256）。
+> **生产落地建议**：改用多算法挑战（`algorithm=SHA-384, algorithm=SHA-256`）或跟随 RFC 7616 注册算法，避免客户端兼容性风险。
+
 ### 3.4 迁移点4: 口令哈希/Realm → SHA3-384 (384 位) ✅
 
 **实现**: `src/PasswordHashPqcTest.java`
