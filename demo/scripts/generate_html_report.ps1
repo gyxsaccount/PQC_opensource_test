@@ -86,6 +86,39 @@ foreach ($r in $matrix.results) {
 }
 [void]$h.AppendLine("</table>")
 
+# ---- 如何阅读该表 (详细说明) ----
+[void]$h.AppendLine('<h3>如何阅读这张表</h3>')
+[void]$h.AppendLine('<div class="card"><strong>表头含义</strong> - SSH 握手必须 4 类算法每类都选出一个双方共有的算法:')
+[void]$h.AppendLine('<table><tr><th>列</th><th>含义</th><th>判定</th></tr>')
+[void]$h.AppendLine('<tr><td><strong>KEX</strong></td><td>密钥交换算法: 如何协商出加密密钥</td><td><code>matched: &lt;算法&gt;</code> = 协商成功; <code>MISMATCH</code> = 断点</td></tr>')
+[void]$h.AppendLine('<tr><td><strong>Hostkey</strong></td><td>主机密钥算法: 如何验证服务器身份</td><td>同上</td></tr>')
+[void]$h.AppendLine('<tr><td><strong>Cipher</strong></td><td>对称加密算法: 传输数据加密</td><td>同上</td></tr>')
+[void]$h.AppendLine('<tr><td><strong>MAC</strong></td><td>完整性校验算法: 防篡改</td><td>同上</td></tr>')
+[void]$h.AppendLine('<tr><td><strong>断点</strong></td><td>4 类中协商失败的类别</td><td><span class="ok">无</span> = 握手成功; 列出类别 = 连接失败</td></tr>')
+[void]$h.AppendLine('</table>')
+[void]$h.AppendLine('<p class="note">核心规则: 任一类别 <code>MISMATCH</code> - 连接直接失败。</p></div>')
+
+[void]$h.AppendLine('<div class="card"><strong>场景名含义 (M1/M2 x C1-C4)</strong>')
+[void]$h.AppendLine('<ul>')
+[void]$h.AppendLine('<li><strong>M1 (软迁移)</strong>: 新服务端 = 经典 + 后量子同时保留 (渐进式, 不伤旧客户端)</li>')
+[void]$h.AppendLine('<li><strong>M2 (硬迁移)</strong>: 新服务端 = 只留后量子, 删光经典 (激进, 切断旧客户端)</li>')
+[void]$h.AppendLine('<li><strong>C1</strong>: 旧客户端 - 旧服务端 (两个老版本对话)</li>')
+[void]$h.AppendLine('<li><strong>C2</strong>: 旧客户端 - 新服务端 (老客户端想连新服务器)</li>')
+[void]$h.AppendLine('<li><strong>C3</strong>: 新客户端 - 旧服务端 (新客户端想连老服务器)</li>')
+[void]$h.AppendLine('<li><strong>C4</strong>: 新客户端 - 新服务端 (两个新版本对话, PQ 生效)</li>')
+[void]$h.AppendLine('</ul>')
+[void]$h.AppendLine('<p class="note">单元格值: <code>matched: xxx</code> = 协商成功选出该算法; <code>MISMATCH</code> = 无共同算法; 含 <code>mlkem</code>/<code>sntrup</code> = 后量子混合算法 (迁移目标)。</p></div>')
+
+[void]$h.AppendLine('<div class="card"><strong>四行关键解读</strong>')
+[void]$h.AppendLine('<table><tr><th>场景</th><th>白话解读</th><th>结论</th></tr>')
+[void]$h.AppendLine('<tr><td><strong>M1-C2</strong> 旧客户端-新服务端(软)</td><td>老客户端不会 PQ, 服务端退一步用经典算法</td><td><span class="ok">软迁移下老客户端不受影响 = 向后兼容</span></td></tr>')
+[void]$h.AppendLine('<tr><td><strong>M1-C4</strong> 新客户端-新服务端(软)</td><td>双方都会 PQ, 选出 mlkem768x25519-sha256</td><td><span class="ok">后量子算法真正生效 = 迁移目标达成</span></td></tr>')
+[void]$h.AppendLine('<tr><td><strong>M2-C2</strong> 旧客户端-新服务端(硬)</td><td>老客户端只会经典, 服务端只留 PQ, 无交集</td><td><span class="bad">硬迁移切断所有老客户端 = 最大断点</span></td></tr>')
+[void]$h.AppendLine('<tr><td><strong>M2-C3</strong> 新客户端-旧服务端</td><td>KEX 碰巧成功, 但签名只发混合, 老服务端不认</td><td><span class="bad">严格客户端必须保留经典签名兜底</span></td></tr>')
+[void]$h.AppendLine('</table>')
+[void]$h.AppendLine('<p><strong>核心结论:</strong> 盯三件事 - 1. 有没有 <code>MISMATCH</code> (有=断点=连不上); 2. M1 全绿 = 渐进迁移安全; 3. M2 有断点 = 必须等客户端全升级。')
+[void]$h.AppendLine('<strong>推荐采用 M1 软迁移; M2 硬迁移只在所有客户端升级完毕后使用。</strong></p></div>')
+
 # ---- 断点详情 ----
 if ($bp -gt 0) {
     [void]$h.AppendLine("<h2>断点详情</h2>")
