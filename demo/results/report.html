@@ -23,7 +23,7 @@
 </head>
 <body>
 <h1>libSSH2 后量子迁移测试报告</h1>
-<p class="note">生成时间: 2026-09-16T09:02:46.4870879Z | 基线工具: OpenSSH_for_Windows_9.5p2, LibreSSL 3.8.2</p>
+<p class="note">生成时间: 2026-10-20T11:44:54.7272119Z | 基线工具: OpenSSH_for_Windows_9.5p2, LibreSSL 3.8.2</p>
 <div class="card">
 <div class="metric"><div class="num red">2</div><div class="lbl">断点场景数</div></div>
 <div class="metric"><div class="num green">6</div><div class="lbl">安全场景数</div></div>
@@ -37,14 +37,14 @@
 </ul>
 <h2>兼容性矩阵 (断点检测)</h2>
 <table><tr><th>场景</th><th>KEX</th><th>Hostkey</th><th>Cipher</th><th>MAC</th><th>断点</th></tr>
-<tr><td>C1: 旧客户端 → 旧服务端 (pre-PQ→pre-PQ)</td><td class=''>matched: diffie-hellman-group1-sha1</td><td class=''>matched: ssh-ed25519</td><td>matched: aes128-ctr</td><td>matched: hmac-sha2-256</td><td><span class='ok'>无</span></td></tr>
-<tr><td>C2: 旧客户端 → 新服务端 (pre-PQ→hybrid)</td><td class=''>matched: diffie-hellman-group14-sha256</td><td class=''>matched: ssh-ed25519</td><td>matched: aes128-ctr</td><td>matched: hmac-sha2-256</td><td><span class='ok'>无</span></td></tr>
-<tr><td>C3: 新客户端 → 旧服务端 (hybrid→pre-PQ)</td><td class='ok'>matched: sntrup761x25519-sha512@openssh.com</td><td class=''>matched: ssh-ed25519</td><td>matched: aes256-gcm@openssh.com</td><td>matched: hmac-sha2-256-etm@openssh.com</td><td><span class='ok'>无</span></td></tr>
-<tr><td>C4: 新客户端 → 新服务端 (hybrid→hybrid)</td><td class='ok'>matched: mlkem768x25519-sha256</td><td class='ok'>matched: ssh-ed25519+ml-dsa-44</td><td>matched: aes256-gcm@openssh.com</td><td>matched: hmac-sha2-256-etm@openssh.com</td><td><span class='ok'>无</span></td></tr>
-<tr><td>C1: 旧客户端 → 旧服务端 (pre-PQ→pre-PQ)</td><td class=''>matched: diffie-hellman-group1-sha1</td><td class=''>matched: ssh-ed25519</td><td>matched: aes128-ctr</td><td>matched: hmac-sha2-256</td><td><span class='ok'>无</span></td></tr>
-<tr><td>C2: 旧客户端 → 新服务端 (pre-PQ→hybrid)</td><td class='bad'>MISMATCH</td><td class='bad'>MISMATCH</td><td>matched: aes128-gcm@openssh.com</td><td>matched: hmac-sha2-256-etm@openssh.com</td><td><span class='bad'>kex, hostkey</span></td></tr>
-<tr><td>C3: 新客户端 → 旧服务端 (hybrid→pre-PQ)</td><td class='ok'>matched: sntrup761x25519-sha512@openssh.com</td><td class='bad'>MISMATCH</td><td>matched: aes256-gcm@openssh.com</td><td>matched: hmac-sha2-256-etm@openssh.com</td><td><span class='bad'>hostkey</span></td></tr>
-<tr><td>C4: 新客户端 → 新服务端 (hybrid→hybrid)</td><td class='ok'>matched: mlkem768x25519-sha256</td><td class='ok'>matched: ssh-ed25519+ml-dsa-44</td><td>matched: aes256-gcm@openssh.com</td><td>matched: hmac-sha2-256-etm@openssh.com</td><td><span class='ok'>无</span></td></tr>
+<tr><td>C1: 客户端[传统] → 服务端[传统]</td><td class=''>matched: diffie-hellman-group1-sha1</td><td class=''>matched: ssh-ed25519</td><td>matched: aes128-ctr</td><td>matched: hmac-sha2-256</td><td><span class='ok'>无</span></td></tr>
+<tr><td>C2: 客户端[传统] → 服务端[混合]</td><td class=''>matched: diffie-hellman-group14-sha256</td><td class=''>matched: ssh-ed25519</td><td>matched: aes128-ctr</td><td>matched: hmac-sha2-256</td><td><span class='ok'>无</span></td></tr>
+<tr><td>C3: 客户端[混合] → 服务端[传统]</td><td class=''>matched: curve25519-sha256</td><td class=''>matched: ssh-ed25519</td><td>matched: aes256-gcm@openssh.com</td><td>matched: hmac-sha2-256-etm@openssh.com</td><td><span class='ok'>无</span></td></tr>
+<tr><td>C4: 客户端[混合] → 服务端[混合]</td><td class='ok'>matched: mlkem768x25519-sha256</td><td class='ok'>matched: ssh-ed25519+ml-dsa-44</td><td>matched: aes256-gcm@openssh.com</td><td>matched: hmac-sha2-256-etm@openssh.com</td><td><span class='ok'>无</span></td></tr>
+<tr><td>C1: 客户端[传统] → 服务端[传统]</td><td class=''>matched: diffie-hellman-group1-sha1</td><td class=''>matched: ssh-ed25519</td><td>matched: aes128-ctr</td><td>matched: hmac-sha2-256</td><td><span class='ok'>无</span></td></tr>
+<tr><td>C2: 客户端[传统] → 服务端[纯后量子]</td><td class='bad'>MISMATCH</td><td class='bad'>MISMATCH</td><td>matched: aes128-gcm@openssh.com</td><td>matched: hmac-sha2-256-etm@openssh.com</td><td><span class='bad'>kex, hostkey</span></td></tr>
+<tr><td>C3: 客户端[纯后量子] → 服务端[传统]</td><td class='bad'>MISMATCH</td><td class='bad'>MISMATCH</td><td>matched: aes256-gcm@openssh.com</td><td>matched: hmac-sha2-256-etm@openssh.com</td><td><span class='bad'>kex, hostkey</span></td></tr>
+<tr><td>C4: 客户端[纯后量子] → 服务端[纯后量子]</td><td class='ok'>matched: mlkem768x25519-sha256</td><td class='ok'>matched: ssh-ed25519+ml-dsa-44</td><td>matched: aes256-gcm@openssh.com</td><td>matched: hmac-sha2-256-etm@openssh.com</td><td><span class='ok'>无</span></td></tr>
 </table>
 <h3>如何阅读这张表</h3>
 <div class="card"><strong>表头含义</strong> - SSH 握手必须 4 类算法每类都选出一个双方共有的算法:
@@ -56,29 +56,34 @@
 <tr><td><strong>断点</strong></td><td>4 类中协商失败的类别</td><td><span class="ok">无</span> = 握手成功; 列出类别 = 连接失败</td></tr>
 </table>
 <p class="note">核心规则: 任一类别 <code>MISMATCH</code> - 连接直接失败。</p></div>
-<div class="card"><strong>场景名含义 (M1/M2 x C1-C4)</strong>
+<div class="card"><strong>场景名含义: 三种部署类型</strong> (每个端点的类型由算法集自动识别, 显示在标签 [ ] 中)
+<table><tr><th>类型</th><th>含义</th><th>算法组成</th></tr>
+<tr><td><strong>传统</strong></td><td>只用经典算法, 无任何后量子</td><td>纯 ECDH/DH + RSA/ECDSA/Ed25519</td></tr>
+<tr><td><strong>混合</strong></td><td>经典 + 后量子同时部署 (渐进迁移)</td><td>mlkem768x25519 + curve25519 等并存</td></tr>
+<tr><td><strong>纯后量子</strong></td><td>只用后量子算法, 删光经典 (硬迁移)</td><td>仅 mlkem768x25519 + ml-dsa-44</td></tr>
+</table>
 <ul>
-<li><strong>M1 (软迁移)</strong>: 新服务端 = 经典 + 后量子同时保留 (渐进式, 不伤旧客户端)</li>
-<li><strong>M2 (硬迁移)</strong>: 新服务端 = 只留后量子, 删光经典 (激进, 切断旧客户端)</li>
-<li><strong>C1</strong>: 旧客户端 - 旧服务端 (两个老版本对话)</li>
-<li><strong>C2</strong>: 旧客户端 - 新服务端 (老客户端想连新服务器)</li>
-<li><strong>C3</strong>: 新客户端 - 旧服务端 (新客户端想连老服务器)</li>
-<li><strong>C4</strong>: 新客户端 - 新服务端 (两个新版本对话, PQ 生效)</li>
+<li><strong>M1 (软迁移)</strong>: 新服务端 = <strong>混合</strong> (经典+后量子保留, 不伤旧客户端)</li>
+<li><strong>M2 (硬迁移)</strong>: 新服务端 = <strong>纯后量子</strong> (删光经典, 切断旧客户端)</li>
+<li><strong>C1</strong>: 客户端[传统] - 服务端[传统] (迁移前环境)</li>
+<li><strong>C2</strong>: 客户端[传统] - 服务端[混合/纯后量子] (老客户端连新服务端)</li>
+<li><strong>C3</strong>: 客户端[混合/纯后量子] - 服务端[传统] (新客户端连老服务端)</li>
+<li><strong>C4</strong>: 客户端[混合/纯后量子] - 服务端[混合/纯后量子] (双方新环境)</li>
 </ul>
-<p class="note">单元格值: <code>matched: xxx</code> = 协商成功选出该算法; <code>MISMATCH</code> = 无共同算法; 含 <code>mlkem</code>/<code>sntrup</code> = 后量子混合算法 (迁移目标)。</p></div>
-<div class="card"><strong>四行关键解读</strong>
+<p class="note">场景标签自动生成: 按实际算法集识别 [传统]/[混合]/[纯后量子], 不再用笼统的新旧表述。</p></div>
+<div class="card"><strong>四行关键解读 (对应本报告实际输出)</strong>
 <table><tr><th>场景</th><th>白话解读</th><th>结论</th></tr>
-<tr><td><strong>M1-C2</strong> 旧客户端-新服务端(软)</td><td>老客户端不会 PQ, 服务端退一步用经典算法</td><td><span class="ok">软迁移下老客户端不受影响 = 向后兼容</span></td></tr>
-<tr><td><strong>M1-C4</strong> 新客户端-新服务端(软)</td><td>双方都会 PQ, 选出 mlkem768x25519-sha256</td><td><span class="ok">后量子算法真正生效 = 迁移目标达成</span></td></tr>
-<tr><td><strong>M2-C2</strong> 旧客户端-新服务端(硬)</td><td>老客户端只会经典, 服务端只留 PQ, 无交集</td><td><span class="bad">硬迁移切断所有老客户端 = 最大断点</span></td></tr>
-<tr><td><strong>M2-C3</strong> 新客户端-旧服务端</td><td>KEX 碰巧成功, 但签名只发混合, 老服务端不认</td><td><span class="bad">严格客户端必须保留经典签名兜底</span></td></tr>
+<tr><td><strong>M1-C2</strong> 客户端[传统]-服务端[混合]</td><td>老客户端只会经典, 混合服务端退一步用经典回应</td><td><span class="ok">软迁移下老客户端不受影响 = 向后兼容</span></td></tr>
+<tr><td><strong>M1-C4</strong> 客户端[混合]-服务端[混合]</td><td>双方带后量子, 选出 mlkem768x25519-sha256 + ssh-ed25519+ml-dsa-44</td><td><span class="ok">后量子算法真正生效 = 迁移目标达成</span></td></tr>
+<tr><td><strong>M2-C2</strong> 客户端[传统]-服务端[纯后量子]</td><td>老客户端只会经典, 服务端只留后量子, 无交集</td><td><span class="bad">硬迁移切断所有老客户端 = 最大断点</span></td></tr>
+<tr><td><strong>M2-C3</strong> 客户端[纯后量子]-服务端[传统]</td><td>客户端只发后量子, 老服务端全不认</td><td><span class="bad">纯后量子客户端必须保留经典兜底</span></td></tr>
 </table>
 <p><strong>核心结论:</strong> 盯三件事 - 1. 有没有 <code>MISMATCH</code> (有=断点=连不上); 2. M1 全绿 = 渐进迁移安全; 3. M2 有断点 = 必须等客户端全升级。
 <strong>推荐采用 M1 软迁移; M2 硬迁移只在所有客户端升级完毕后使用。</strong></p></div>
 <h2>断点详情</h2>
 <ul>
-<li><span class='bad'>C2: 旧客户端 → 新服务端 (pre-PQ→hybrid)</span> - 失败类别: kex, hostkey</li>
-<li><span class='bad'>C3: 新客户端 → 旧服务端 (hybrid→pre-PQ)</span> - 失败类别: hostkey</li>
+<li><span class='bad'>C2: 客户端[传统] → 服务端[纯后量子]</span> - 失败类别: kex, hostkey</li>
+<li><span class='bad'>C3: 客户端[纯后量子] → 服务端[传统]</span> - 失败类别: kex, hostkey</li>
 </ul>
 <div class="card"><strong>断点消除策略:</strong> 迁移过渡期服务端必须保留经典算法双轨运行, 例: <code>KexAlgorithms mlkem768x25519-sha256,curve25519-sha256,...</code>。</div>
 <h2>真实互通测试</h2>

@@ -1,6 +1,6 @@
 ﻿{
     "title":  "libSSH2 后量子迁移 — 兼容性矩阵报告",
-    "generated_at":  "2026-09-16T09:02:46.4870879Z",
+    "generated_at":  "2026-10-20T11:44:54.7272119Z",
     "baseline_tool":  "OpenSSH_for_Windows_9.5p2, LibreSSL 3.8.2",
     "configuration":  [
                           {
@@ -16,66 +16,78 @@
                       ],
     "results":  [
                     {
-                        "kex":  "matched: diffie-hellman-group1-sha1",
+                        "scenario":  "C1: 客户端[传统] → 服务端[传统]",
+                        "client_type":  "传统",
                         "hostkey":  "matched: ssh-ed25519",
-                        "scenario":  "C1: 旧客户端 → 旧服务端 (pre-PQ→pre-PQ)",
+                        "kex":  "matched: diffie-hellman-group1-sha1",
                         "mac":  "matched: hmac-sha2-256",
                         "cipher":  "matched: aes128-ctr",
+                        "server_type":  "传统",
                         "has_breakpoint":  false,
                         "breakpoints":  [
 
                                         ]
                     },
                     {
+                        "scenario":  "C2: 客户端[传统] → 服务端[混合]",
+                        "client_type":  "传统",
+                        "hostkey":  "matched: ssh-ed25519",
                         "kex":  "matched: diffie-hellman-group14-sha256",
-                        "hostkey":  "matched: ssh-ed25519",
-                        "scenario":  "C2: 旧客户端 → 新服务端 (pre-PQ→hybrid)",
                         "mac":  "matched: hmac-sha2-256",
                         "cipher":  "matched: aes128-ctr",
+                        "server_type":  "混合",
                         "has_breakpoint":  false,
                         "breakpoints":  [
 
                                         ]
                     },
                     {
-                        "kex":  "matched: sntrup761x25519-sha512@openssh.com",
+                        "scenario":  "C3: 客户端[混合] → 服务端[传统]",
+                        "client_type":  "混合",
                         "hostkey":  "matched: ssh-ed25519",
-                        "scenario":  "C3: 新客户端 → 旧服务端 (hybrid→pre-PQ)",
+                        "kex":  "matched: curve25519-sha256",
                         "mac":  "matched: hmac-sha2-256-etm@openssh.com",
                         "cipher":  "matched: aes256-gcm@openssh.com",
+                        "server_type":  "传统",
                         "has_breakpoint":  false,
                         "breakpoints":  [
 
                                         ]
                     },
                     {
-                        "kex":  "matched: mlkem768x25519-sha256",
+                        "scenario":  "C4: 客户端[混合] → 服务端[混合]",
+                        "client_type":  "混合",
                         "hostkey":  "matched: ssh-ed25519+ml-dsa-44",
-                        "scenario":  "C4: 新客户端 → 新服务端 (hybrid→hybrid)",
+                        "kex":  "matched: mlkem768x25519-sha256",
                         "mac":  "matched: hmac-sha2-256-etm@openssh.com",
                         "cipher":  "matched: aes256-gcm@openssh.com",
+                        "server_type":  "混合",
                         "has_breakpoint":  false,
                         "breakpoints":  [
 
                                         ]
                     },
                     {
-                        "kex":  "matched: diffie-hellman-group1-sha1",
+                        "scenario":  "C1: 客户端[传统] → 服务端[传统]",
+                        "client_type":  "传统",
                         "hostkey":  "matched: ssh-ed25519",
-                        "scenario":  "C1: 旧客户端 → 旧服务端 (pre-PQ→pre-PQ)",
+                        "kex":  "matched: diffie-hellman-group1-sha1",
                         "mac":  "matched: hmac-sha2-256",
                         "cipher":  "matched: aes128-ctr",
+                        "server_type":  "传统",
                         "has_breakpoint":  false,
                         "breakpoints":  [
 
                                         ]
                     },
                     {
-                        "kex":  "MISMATCH",
+                        "scenario":  "C2: 客户端[传统] → 服务端[纯后量子]",
+                        "client_type":  "传统",
                         "hostkey":  "MISMATCH",
-                        "scenario":  "C2: 旧客户端 → 新服务端 (pre-PQ→hybrid)",
+                        "kex":  "MISMATCH",
                         "mac":  "matched: hmac-sha2-256-etm@openssh.com",
                         "cipher":  "matched: aes128-gcm@openssh.com",
+                        "server_type":  "纯后量子",
                         "has_breakpoint":  true,
                         "breakpoints":  [
                                             "kex",
@@ -83,22 +95,27 @@
                                         ]
                     },
                     {
-                        "kex":  "matched: sntrup761x25519-sha512@openssh.com",
+                        "scenario":  "C3: 客户端[纯后量子] → 服务端[传统]",
+                        "client_type":  "纯后量子",
                         "hostkey":  "MISMATCH",
-                        "scenario":  "C3: 新客户端 → 旧服务端 (hybrid→pre-PQ)",
+                        "kex":  "MISMATCH",
                         "mac":  "matched: hmac-sha2-256-etm@openssh.com",
                         "cipher":  "matched: aes256-gcm@openssh.com",
+                        "server_type":  "传统",
                         "has_breakpoint":  true,
                         "breakpoints":  [
+                                            "kex",
                                             "hostkey"
                                         ]
                     },
                     {
-                        "kex":  "matched: mlkem768x25519-sha256",
+                        "scenario":  "C4: 客户端[纯后量子] → 服务端[纯后量子]",
+                        "client_type":  "纯后量子",
                         "hostkey":  "matched: ssh-ed25519+ml-dsa-44",
-                        "scenario":  "C4: 新客户端 → 新服务端 (hybrid→hybrid)",
+                        "kex":  "matched: mlkem768x25519-sha256",
                         "mac":  "matched: hmac-sha2-256-etm@openssh.com",
                         "cipher":  "matched: aes256-gcm@openssh.com",
+                        "server_type":  "纯后量子",
                         "has_breakpoint":  false,
                         "breakpoints":  [
 
@@ -111,15 +128,16 @@
                     "safe_scenarios":  6,
                     "breakpoint_details":  [
                                                {
-                                                   "scenario":  "C2: 旧客户端 → 新服务端 (pre-PQ→hybrid)",
+                                                   "scenario":  "C2: 客户端[传统] → 服务端[纯后量子]",
                                                    "categories":  [
                                                                       "kex",
                                                                       "hostkey"
                                                                   ]
                                                },
                                                {
-                                                   "scenario":  "C3: 新客户端 → 旧服务端 (hybrid→pre-PQ)",
+                                                   "scenario":  "C3: 客户端[纯后量子] → 服务端[传统]",
                                                    "categories":  [
+                                                                      "kex",
                                                                       "hostkey"
                                                                   ]
                                                }

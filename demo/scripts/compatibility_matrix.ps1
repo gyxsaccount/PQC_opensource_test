@@ -54,13 +54,15 @@ Write-Host "== 迁移兼容性矩阵测试 ==" -ForegroundColor Cyan
 Write-Host "--- 模式 M1: 软迁移 (经典+PQ 混合) ---" -ForegroundColor Yellow
 $resultsM1 = Measure-CompatibilityMatrix `
     -BaselineClient $baselineClient -BaselineServer $baselineServer `
-    -PQClient $pqSoftClient -PQServer $pqSoftServer
+    -PQClient $pqSoftClient -PQServer $pqSoftServer `
+    -ModeLabel "M1-soft"
 
 # M2: 硬迁移 (服务端仅 PQ)
 Write-Host "--- 模式 M2: 硬迁移 (服务端仅 PQ) ---" -ForegroundColor Yellow
 $resultsM2 = Measure-CompatibilityMatrix `
     -BaselineClient $baselineClient -BaselineServer $baselineServer `
-    -PQClient $pqStrictClient -PQServer $pqStrictServer
+    -PQClient $pqStrictClient -PQServer $pqStrictServer `
+    -ModeLabel "M2-strict"
 
 $allResults = @($resultsM1) + @($resultsM2)
 

@@ -32,6 +32,25 @@ function Invoke-SSHNegotiation {
     return "MISMATCH"
 }
 
+function Get-AlgoSetType {
+    <#
+    .SYNOPSIS
+      识别一组算法的部署类型: 传统 / 混合 / 纯后量子
+    .PARAMETER Algos
+      算法列表 (字符串数组)
+    .RETURNS
+      "传统" (只有经典算法) | "混合" (经典+PQ都有) | "纯后量子" (只有PQ)
+    #>
+    param([string[]]$Algos)
+    # PQ 关键词: KEX 混合 (mlkem/sntrup/ntru) 或 混合签名 (ml-dsa/slh-dsa/falcon)
+    $pqPattern = "mlkem|sntrup|ntru|kyber|ml-dsa|mldsa|slh-dsa|falcon|dilithium|sphincs"
+    $hasPQ = @($Algos | Where-Object { $_ -match $pqPattern }).Count -gt 0
+    $hasClassic = @($Algos | Where-Object { $_ -notmatch $pqPattern }).Count -gt 0
+    if ($hasPQ -and $hasClassic) { return "混合" }
+    elseif ($hasPQ) { return "纯后量子" }
+    else { return "传统" }
+}
+
 function Measure-CompatibilityMatrix {
     <#
     .SYNOPSIS
@@ -55,15 +74,23 @@ function Measure-CompatibilityMatrix {
         [hashtable]$BaselineServer,
         [hashtable]$PQClient,
         [hashtable]$PQServer,
-        [string]$ScenarioName = "compatibility-matrix"
+        [string]$ScenarioName = "compatibility-matrix",
+        [string]$ModeLabel = ""   # 例如 "M1-soft" / "M2-strict", 用于场景命名
     )
 
     $categories = @("kex", "hostkey", "cipher", "mac")
+
+    # 识别每个端点的实际部署类型 (传统/混合/纯后量子)
+    $baseClientType = Get-AlgoSetType -Algos $BaselineClient.kex
+    $baseServerType = Get-AlgoSetType -Algos $BaselineServer.kex
+    $pqClientType   = Get-AlgoSetType -Algos $PQClient.kex
+    $pqServerType   = Get-AlgoSetType -Algos $PQServer.kex
+
     $cases = @(
-        @{ label = "C1: 旧客户端 → 旧服务端 (pre-PQ→pre-PQ)";   client = $BaselineClient; server = $BaselineServer },
-        @{ label = "C2: 旧客户端 → 新服务端 (pre-PQ→hybrid)";   client = $BaselineClient; server = $PQServer },
-        @{ label = "C3: 新客户端 → 旧服务端 (hybrid→pre-PQ)";   client = $PQClient;       server = $BaselineServer },
-        @{ label = "C4: 新客户端 → 新服务端 (hybrid→hybrid)";   client = $PQClient;       server = $PQServer }
+        @{ label = "C1: 客户端[$baseClientType] → 服务端[$baseServerType]"; client = $BaselineClient; server = $BaselineServer },
+        @{ label = "C2: 客户端[$baseClientType] → 服务端[$pqServerType]";   client = $BaselineClient; server = $PQServer },
+        @{ label = "C3: 客户端[$pqClientType] → 服务端[$baseServerType]";   client = $PQClient;       server = $BaselineServer },
+        @{ label = "C4: 客户端[$pqClientType] → 服务端[$pqServerType]";     client = $PQClient;       server = $PQServer }
     )
 
     $results = @()
@@ -71,6 +98,9 @@ function Measure-CompatibilityMatrix {
         $entry = @{
             scenario = $case.label
         }
+        # 携带部署类型信息 (客户端/服务端用了 传统|混合|纯后量子)
+        $entry["client_type"] = if ($case.client -eq $BaselineClient) { $baseClientType } else { $pqClientType }
+        $entry["server_type"] = if ($case.server -eq $BaselineServer) { $baseServerType } else { $pqServerType }
         $breakpoints = @()
         foreach ($cat in $categories) {
             $clientAlgos = if ($case.client.ContainsKey($cat)) { $case.client[$cat] } else { @() }

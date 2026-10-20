@@ -25,9 +25,10 @@ $mac   = @(Get-SshAlgos "mac")
 $hostkey = @(Get-SshAlgos "key")     # OpenSSH: key = host key algorithms
 $sig   = @(Get-SshAlgos "sig")
 
-# 服务端默认算法(OpenSSH 9.5 sshd 默认配置, 代表"迁移前服务端")
+# 服务端默认算法(迁移前基线: 纯传统, 不含任何 PQ 算法)
+# 注: 真实 OpenSSH 9.5 sshd 默认也含 sntrup761x25519, 但作为"迁移前基线"
+#     此处刻意排除 PQ, 以清晰区分 传统/混合/纯后量子 三种部署类型
 $serverKex = @(
-    "sntrup761x25519-sha512@openssh.com",
     "curve25519-sha256", "curve25519-sha256@libssh.org",
     "ecdh-sha2-nistp256", "ecdh-sha2-nistp384", "ecdh-sha2-nistp521",
     "diffie-hellman-group16-sha512", "diffie-hellman-group18-sha512",

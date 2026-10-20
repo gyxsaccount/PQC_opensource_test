@@ -2,7 +2,7 @@
     "tool":  "OpenSSH_for_Windows",
     "tool_version":  "OpenSSH_for_Windows_9.5p2, LibreSSL 3.8.2",
     "scope":  "migration-baseline",
-    "collected_at":  "2026-09-16T09:02:46.3547212Z",
+    "collected_at":  "2026-10-20T11:44:54.6054306Z",
     "host":  "DESKTOP-K6SPP1H",
     "os":  "Windows_NT",
     "client":  {
@@ -84,7 +84,6 @@
                },
     "server_default":  {
                            "kex":  [
-                                       "sntrup761x25519-sha512@openssh.com",
                                        "curve25519-sha256",
                                        "curve25519-sha256@libssh.org",
                                        "ecdh-sha2-nistp256",
