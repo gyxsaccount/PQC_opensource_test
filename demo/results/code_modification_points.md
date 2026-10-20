@@ -6,6 +6,30 @@
 
 ---
 
+## 0. 自实现声明（SELF-IMPLEMENT）
+
+> **libssh2 官方软件本身【不具备】后量子能力**，本项目为实现 PQC 迁移
+> 自实现了以下 SSH 协议层封装（算法原语来自 OpenSSL 3.5，非本项目实现）。
+
+| 能力 | libssh2 是否原生具备 | 本项目自实现位置 |
+|---|---|---|
+| 后量子 KEX 算法注册 (`mlkem768x25519-sha256`) | ❌ 不具备 | `self_implemented/hybrid_kex.c` + `kex.c` 补丁 |
+| 两个共享密钥的 XOR 混合合并 | ❌ 不具备 | `hybrid_kex.c` 中 `xor_shared_secret()` (MOD-K1) |
+| 混合 KEX 的封装/解封装 framing | ❌ 不具备 | `hybrid_kex.c` MOD-K7/K8 |
+| 后量子签名注册 (`ssh-ed25519+ml-dsa-44`) | ❌ 不具备 | `self_implemented/hybrid_signature.c` + `hostkey.c` 补丁 |
+| 混合签名双算法拼接 framing | ❌ 不具备 | `hybrid_signature.c` MOD-S1/S9/S10 |
+| ML-KEM-768 / ML-DSA-44 算法本体 | ❌ libssh2 无 | ✅ **OpenSSL 3.5 原生提供**（本项目不实现） |
+
+**实际运行时需要改成的样子**：
+- 自实现代码（`hybrid_kex.c` / `hybrid_signature.c`）已补全为真实 OpenSSL 3.5
+  EVP API 调用（见下文明细中的 `【MOD-K#】/【MOD-S#】` 标记）。
+- 真正要跑起来，还需：
+  1. 把两个 .c/.h 文件加入 libssh2 的 `CMakeLists.txt` 源文件列表；
+  2. 打上 `libssh2_pq.patch` 注册算法条目；
+  3. 用 OpenSSL 3.5+ 编译（`-DENABLE_POST_QUANTUM=ON`）。
+
+---
+
 ## 1. 核心修改点总览
 
 | # | 文件 | 行号 | 修改类型 | 用途 |
@@ -16,8 +40,8 @@
 | 4 | `src/transport.c` | 协商匹配逻辑 | 修改匹配逻辑 | 混合算法名优先匹配 + 经典回退 |
 | 5 | `src/openssl.h` | **L395-397** | 新增类型映射 | 桥接 OpenSSL 3.5 EVP_PKEY 类型 |
 | 6 | `CMakeLists.txt` | **L281-303** | 新增选项 | `ENABLE_POST_QUANTUM` 开关 + OpenSSL 3.5 检测 |
-| 7 | `demo/self_implemented/hybrid_kex.c` | 全文件 | 新增文件 | ML-KEM-768 + X25519 混合 KEX 实现 |
-| 8 | `demo/self_implemented/hybrid_signature.c` | 全文件 | 新增文件 | ML-DSA-44 + Ed25519 混合签名实现 |
+| 7 | `demo/self_implemented/hybrid_kex.c` | 全文件 | 新增文件(已补全) | ML-KEM-768 + X25519 混合 KEX 实现 (MOD-K1~K11) |
+| 8 | `demo/self_implemented/hybrid_signature.c` | 全文件 | 新增文件(已补全) | ML-DSA-44 + Ed25519 混合签名实现 (MOD-S1~S11) |
 
 ---
 
@@ -276,5 +300,10 @@ CMakeLists.txt          + ENABLE_POST_QUANTUM 选项
 ```
 
 > 完整补丁见 `demo/self_implemented/libssh2_pq.patch`。
-> **注意**：`hybrid_kex.c` / `hybrid_signature.c` 中标注 `[SELF-IMPLEMENT]`
-> 的 OpenSSL EVP 调用需按 OpenSSL 3.5 实际接口补齐后才能真正编译运行。
+> **状态更新**：`hybrid_kex.c` / `hybrid_signature.c` 中原本 `[SELF-IMPLEMENT]`
+> 占位的 OpenSSL EVP 调用**已补全为真实 OpenSSL 3.5 API**（各函数标注 `【MOD-K#】/【MOD-S#】`）。
+> 剩余需人工确认项：
+> - OpenSSL 3.5.0 的 ML-KEM raw 密钥导出如改用 `OSSL_PKEY_PARAM_PUB_KEY` 参数方式，
+>   需替换 `EVP_PKEY_get_raw_public_key` 的调用（见 hybrid_kex.c MOD-K4 注释）。
+> - ML-DSA-44 的 digest 名若用预哈希（pre-hash）模式，`EVP_DigestSignInit_ex`
+>   的 digest 参数需改为 `"SHA512"` 并接入 `EVP_DigestSignUpdate` 流程。

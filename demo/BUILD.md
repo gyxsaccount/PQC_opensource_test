@@ -67,6 +67,11 @@ cmake -S . -B build_pq `
 cmake --build build_pq --config Release
 ```
 
+> **自实现代码状态**：`demo/self_implemented/hybrid_kex.c` / `hybrid_signature.c`
+> 中的 OpenSSL 3.5 EVP 调用**已补全为真实 API**（各函数标注 `【MOD-K#】/【MOD-S#】`）。
+> 若 OpenSSL 3.5.0 的 ML-KEM raw 接口有差异，按 `hybrid_kex.c` MOD-K4 注释调整；
+> ML-DSA 若用预哈希模式，按 `hybrid_signature.c` MOD-S7 注释调整 digest 参数。
+
 ## 4. 部署后量子 SSH 服务端 (OpenSSH 9.9)
 
 ```powershell

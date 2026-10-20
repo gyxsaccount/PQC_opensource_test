@@ -227,6 +227,7 @@ MAC: 9 (hmac-md5*, hmac-sha1*, umac-64)
 | v1.0 | 2026-09-16 | 首个可运行版本：基线采集 / 断点矩阵 / 真实互通 / 算法审计 / 双格式报告 |
 | v1.1 | 2026-09-16 | 增加真实互通抓包 (`live_negotiation.ps1`)、算法审计 (`algorithm_audit.ps1`)、HTML 报告 |
 | v1.2 | 2026-10-20 | 兼容性矩阵场景标签改为直接标注端点类型（传统/混合/纯后量子），新增代码修改点章节与详细表格说明 |
+| v1.3 | 2026-10-20 | **补全自实现代码**：`hybrid_kex.c`/`hybrid_signature.c` 从骨架占位升级为真实 OpenSSL 3.5 API 调用，新增自实现声明与 `【MOD-K#】/【MOD-S#】` 修改点标记 |
 
 ### 6.1 组件版本清单（详见 `demo/VERSION_MATRIX.md`）
 
@@ -240,11 +241,20 @@ MAC: 9 (hmac-md5*, hmac-sha1*, umac-64)
 
 ### 6.2 自实现部分（SELF-IMPLEMENT）
 
-| 文件 | 功能 | 依赖 | 参考标准 |
-|---|---|---|---|
-| `demo/self_implemented/hybrid_kex.c/.h` | ML-KEM-768 + X25519 混合 KEX | OpenSSL 3.5 EVP_KEM / liboqs | RFC 9708, draft-ssh-hybrid |
-| `demo/self_implemented/hybrid_signature.c/.h` | ML-DSA-44 + Ed25519 混合签名 | OpenSSL 3.5 EVP_SIGNATURE | draft-ssh-hybrid-signatures-04 |
-| `demo/self_implemented/libssh2_pq.patch` | libssh2 集成补丁 | libssh2 1.11 源码 | — |
+> **声明**：libssh2 官方（1.11.x）**不具备**以下能力，本项目为 PQC 迁移自实现补齐；
+> 算法原语（ML-KEM/ML-DSA）来自 OpenSSL 3.5，非本项目实现。
+
+| 文件 | 功能 | 依赖 | 参考标准 | 状态 |
+|---|---|---|---|---|
+| `demo/self_implemented/hybrid_kex.c/.h` | ML-KEM-768 + X25519 混合 KEX | OpenSSL 3.5 EVP_KEM / liboqs | RFC 9708, draft-ssh-hybrid | ✅ 已补全真实 API (MOD-K1~K11) |
+| `demo/self_implemented/hybrid_signature.c/.h` | ML-DSA-44 + Ed25519 混合签名 | OpenSSL 3.5 EVP_SIGNATURE | draft-ssh-hybrid-signatures-04 | ✅ 已补全真实 API (MOD-S1~S11) |
+| `demo/self_implemented/libssh2_pq.patch` | libssh2 集成补丁 | libssh2 1.11 源码 | — | ✅ 补丁文件 |
+
+**实际运行时需要改成的样子**：
+1. 将 `hybrid_kex.c/.h`、`hybrid_signature.c/.h` 加入 libssh2 的 `CMakeLists.txt` 源文件列表；
+2. 打上 `libssh2_pq.patch`（注册 KEX / 主机密钥算法条目）；
+3. 用 OpenSSL 3.5+ 编译，启用 `-DENABLE_POST_QUANTUM=ON`；
+4. 若 OpenSSL 3.5.0 的 ML-KEM raw 接口有差异，按 `hybrid_kex.c` MOD-K4 注释调整。
 
 ---
 
