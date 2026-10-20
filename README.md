@@ -146,23 +146,33 @@ PowerShell -ExecutionPolicy Bypass -File .\demo\scripts\live_negotiation.ps1 `
 总场景数: 8 (双模式 x 4 = 8)
 断点场景: 2
 安全场景: 6
-[断点] C2: 旧客户端 → 新服务端 (pre-PQ→hybrid) 失败类别: kex, hostkey
-[断点] C3: 新客户端 → 旧服务端 (hybrid→pre-PQ) 失败类别: hostkey
+[断点] C2: 客户端[传统] → 服务端[纯后量子]  失败类别: kex, hostkey
+[断点] C3: 客户端[纯后量子] → 服务端[传统]  失败类别: kex, hostkey
 ```
+
+**三种部署类型**（场景标签 `[ ]` 中为自动识别的端点类型）：
+
+| 类型 | 含义 | 算法组成 |
+|---|---|---|
+| **传统** | 只用经典算法，无任何后量子 | 纯 ECDH/DH + RSA/ECDSA/Ed25519 |
+| **混合** | 经典 + 后量子同时部署（渐进迁移） | `mlkem768x25519` + `curve25519` 等并存 |
+| **纯后量子** | 只用后量子算法，删光经典（硬迁移） | 仅 `mlkem768x25519` + `ml-dsa-44` |
 
 | 场景 | KEX | Hostkey | 断点 |
 |---|---|---|---|
-| M1-C1 旧→旧 | diffie-hellman-group1-sha1 | ssh-ed25519 | 无 |
-| M1-C2 旧→新(混合) | diffie-hellman-group14-sha256 | ssh-ed25519 | 无 |
-| M1-C3 新→旧 | sntrup761x25519-sha512 | ssh-ed25519 | 无 |
-| M1-C4 新→新(混合) | **mlkem768x25519-sha256** | **ssh-ed25519+ml-dsa-44** | 无 |
-| M2-C2 旧→新(仅PQ) | **MISMATCH** | **MISMATCH** | **kex, hostkey** |
-| M2-C3 新(仅PQ)→旧 | sntrup761x25519-sha512 | **MISMATCH** | **hostkey** |
+| M1-C1 客户端[传统]→服务端[传统] | diffie-hellman-group1-sha1 | ssh-ed25519 | 无 |
+| M1-C2 客户端[传统]→服务端[混合] | diffie-hellman-group14-sha256 | ssh-ed25519 | 无 |
+| M1-C3 客户端[混合]→服务端[传统] | curve25519-sha256 | ssh-ed25519 | 无 |
+| M1-C4 客户端[混合]→服务端[混合] | **mlkem768x25519-sha256** | **ssh-ed25519+ml-dsa-44** | 无 |
+| M2-C1 客户端[传统]→服务端[传统] | diffie-hellman-group1-sha1 | ssh-ed25519 | 无 |
+| M2-C2 客户端[传统]→服务端[纯后量子] | **MISMATCH** | **MISMATCH** | **kex, hostkey** |
+| M2-C3 客户端[纯后量子]→服务端[传统] | **MISMATCH** | **MISMATCH** | **kex, hostkey** |
+| M2-C4 客户端[纯后量子]→服务端[纯后量子] | **mlkem768x25519-sha256** | **ssh-ed25519+ml-dsa-44** | 无 |
 
 ### 4.3 真实互通（本机实测，连 github.com:22）
 
 ```
-矩阵场景: C2 (pre-PQ -> hybrid) - 需服务端经典回退, 否则断点!
+矩阵场景: C2 (客户端[传统] -> 服务端[混合]) - 需服务端经典回退, 否则断点!
 协商 KEX: curve25519-sha256
 协商 Hostkey: ssh-ed25519
 服务端含 PQ KEX: True   (github.com 已支持 sntrup761x25519)
@@ -170,8 +180,9 @@ PowerShell -ExecutionPolicy Bypass -File .\demo\scripts\live_negotiation.ps1 `
 是否协商出 PQ: False
 ```
 
-> 实际印证：github.com 服务端已部署 NTRU 混合 KEX，但本机旧客户端不发送 PQ 算法，
-> 双方回退到经典 `curve25519-sha256`——这正是 C2 场景的真实样本。
+> 实际印证：github.com 服务端已部署 NTRU 混合 KEX（属"混合"类型服务端），但本机旧客户端
+> 只含经典算法（"传统"客户端），不发送 PQ 算法，双方回退到经典 `curve25519-sha256`
+> ——这正是 C2 场景（传统→混合）的真实样本。
 
 ### 4.4 算法健康审计（本机实测）
 
@@ -215,6 +226,7 @@ MAC: 9 (hmac-md5*, hmac-sha1*, umac-64)
 |---|---|---|
 | v1.0 | 2026-09-16 | 首个可运行版本：基线采集 / 断点矩阵 / 真实互通 / 算法审计 / 双格式报告 |
 | v1.1 | 2026-09-16 | 增加真实互通抓包 (`live_negotiation.ps1`)、算法审计 (`algorithm_audit.ps1`)、HTML 报告 |
+| v1.2 | 2026-10-20 | 兼容性矩阵场景标签改为直接标注端点类型（传统/混合/纯后量子），新增代码修改点章节与详细表格说明 |
 
 ### 6.1 组件版本清单（详见 `demo/VERSION_MATRIX.md`）
 
@@ -245,10 +257,23 @@ KEX / hostkey / cipher / MAC **任一类别无交集**，握手即失败——�
 
 | 场景 | 失败类别 | 成因 |
 |---|---|---|
-| M2-C2：旧客户端 → 仅PQ服务端 | kex, hostkey | 旧客户端不认识 `mlkem768x25519-sha256` / `ssh-ed25519+ml-dsa-44`，服务端无经典回退 |
-| M2-C3：仅PQ客户端 → 旧服务端 | hostkey | 严格客户端只发混合签名，旧服务端只有纯 `ssh-ed25519` |
+| M2-C2：客户端[传统] → 服务端[纯后量子] | kex, hostkey | 老客户端不认识 `mlkem768x25519-sha256` / `ssh-ed25519+ml-dsa-44`，服务端无经典回退 |
+| M2-C3：客户端[纯后量子] → 服务端[传统] | kex, hostkey | 纯后量子客户端只发 PQ 算法，老服务端只有经典算法，无交集 |
 
-### 7.2 断点消除策略
+### 7.2 代码修改点（如何修复断点）
+
+> 断点对应的 libssh2 源码**具体修改位置**（行号 + diff 高亮）见
+> [代码修改点明细](demo/results/code_modification_points.md)。
+
+| 文件 | 行号 | 修改 |
+|---|---|---|
+| `src/kex.c` | L3040-3059 | 算法表新增 `mlkem768x25519-sha256`，置顶优先 |
+| `src/hostkey.c` | L1275-1302 | 新增 `ssh-ed25519+ml-dsa-44` 混合主机密钥 |
+| `src/transport.c` | 协商逻辑 | 混合算法优先匹配 + 经典回退 |
+| `src/openssl.h` | L395-397 | 桥接 OpenSSL 3.5 EVP_PKEY 类型 |
+| `CMakeLists.txt` | L281-303 | 新增 `ENABLE_POST_QUANTUM` 构建开关 |
+
+### 7.3 断点消除策略
 
 1. **双轨配置**：服务端同时启用经典 + 混合算法（`KexAlgorithms mlkem768x25519-sha256,curve25519-sha256,...`）
 2. **混合优先、经典兜底**：客户端 PQ 算法置顶，经典算法保留在列表尾部
