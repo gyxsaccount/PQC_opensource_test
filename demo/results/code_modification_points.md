@@ -30,7 +30,122 @@
 
 ---
 
-## 1. 核心修改点总览
+## 1. 官方 master 原生 ML-KEM 支持（重要补充）
+
+> **libssh2 官方 master 分支已原生支持 ML-KEM 混合 KEX**（2026-04-03 合入 PR #1644，
+> 基于 OpenSSL 3.5+）。以下为其真实实现代码，与自实现方案对比。
+
+### 1.1 官方支持的 PQ 算法（编译开关 `LIBSSH2_MLKEM`）
+
+| KEX 算法名 | 组合 | 与 OpenSSH 9.9 对照 |
+|---|---|---|
+| `mlkem768x25519-sha256` | ML-KEM-768 + X25519 | ✅ 同款 |
+| `mlkem768nistp256-sha256` | ML-KEM-768 + NIST P-256 | OpenSSH 无此款 |
+| `mlkem1024nistp384-sha384` | ML-KEM-1024 + NIST P-384 | OpenSSH 无此款 |
+
+### 1.2 官方注册表代码（src/kex.c, master 实测 L2817-2853）
+
+```c
+#if LIBSSH2_MLKEM
+static const struct kex_method kex_method_ssh_mlkem768_nistp256_sha256 = {
+    "mlkem768nistp256-sha256",               /* L2819 */
+    kex_method_mlkem_nistp_key_exchange,
+    kex_method_mlkem_nistp_cleanup,
+    KEX_METHOD_FLAG_REQ_SIGN_HOSTKEY,
+};
+static const struct kex_method kex_method_ssh_mlkem1024_nistp384_sha384 = {
+    "mlkem1024nistp384-sha384",              /* L2825 */
+    kex_method_mlkem_nistp_key_exchange,
+    kex_method_mlkem_nistp_cleanup,
+    KEX_METHOD_FLAG_REQ_SIGN_HOSTKEY,
+};
+#endif /* LIBSSH2_MLKEM */
+...
+#if LIBSSH2_MLKEM
+static const struct kex_method kex_method_ssh_mlkem768_x25519_sha256 = {
+    "mlkem768x25519-sha256",                 /* L2848 - OpenSSH 9.9 同款 */
+    kex_method_mlkem768x25519_key_exchange,  /* L2849 */
+    kex_method_mlkem768x25519_cleanup,       /* L2850 */
+    KEX_METHOD_FLAG_REQ_SIGN_HOSTKEY,
+};
+#endif /* LIBSSH2_MLKEM */
+```
+
+### 1.3 官方 OpenSSL 3.5 KEM 后端代码（src/openssl.c, master 实测 L2031-2186）
+
+**密钥生成 `ssh2_mlkem_new()`**（真实 API: `EVP_PKEY_CTX_new_from_name` + `EVP_PKEY_keygen` + `EVP_PKEY_get_raw_*`）:
+
+```c
+int ssh2_mlkem_new(LIBSSH2_SESSION *session, int mlkem_size,
+                   unsigned char **out_public_key,
+                   unsigned char **out_private_key)
+{
+    EVP_PKEY *key = NULL;
+    EVP_PKEY_CTX *pctx = NULL;
+    const char *evp_name;
+    ...
+    case 768:                                    /* L2050 */
+        evp_name = "ML-KEM-768";                 /* L2051 */
+        privLen = SSH2_MLKEM_768_PRIVATE_KEY_LEN;
+        pubLen = SSH2_MLKEM_768_PUBLIC_KEY_LEN;
+        break;
+    ...
+    pctx = EVP_PKEY_CTX_new_from_name(NULL, evp_name, NULL);   /* L2064 */
+    ...
+    if(EVP_PKEY_keygen_init(pctx) != 1 ||        /* L2068 */
+       EVP_PKEY_keygen(pctx, &key) != 1)
+        goto clean_exit;
+    ...
+    if(EVP_PKEY_get_raw_private_key(key, priv, &actualPrivLen) != 1 ||  /* L2079 */
+       privLen != actualPrivLen)
+        goto clean_exit;
+    if(EVP_PKEY_get_raw_public_key(key, pub, &actualPubLen) != 1 ||     /* L2094 */
+       pubLen != actualPubLen)
+        goto clean_exit;
+    ...
+    return rc;   /* 0 = success */
+}
+```
+
+**共享密钥解封装 `ssh2_mlkem_get_sk()`**（decapsulate）:
+
+```c
+int ssh2_mlkem_get_sk(unsigned char *out_shared_key, int mlkem_size,
+                      uint8_t *private_key, uint8_t *server_ciphertext)
+{
+    ...
+    client_key = EVP_PKEY_new_raw_private_key_ex(NULL, evp_name,   /* L2152 */
+                                                 NULL, private_key, privLen);
+    ...
+    rc = EVP_PKEY_decapsulate_init(client_key_ctx, NULL);          /* L2161 */
+    ...
+    rc = EVP_PKEY_decapsulate(client_key_ctx, NULL, &out_len,      /* L2165 */
+                              server_ciphertext, ciphertextLen);
+    ...
+    rc = EVP_PKEY_decapsulate(client_key_ctx, out_shared_key, &out_len, /* L2175 */
+                              server_ciphertext, ciphertextLen);
+    ...
+    return rc == 1 ? 0 : -1;
+}
+```
+
+### 1.4 官方实现 vs 自实现方案
+
+| 对比项 | 官方 master（#1644） | 本项目自实现 |
+|---|---|---|
+| ML-KEM-768 + X25519 混合 KEX | ✅ 原生 | ✅ 自实现 |
+| OpenSSL 3.5 KEM API | `EVP_PKEY_CTX_new_from_name` + `EVP_PKEY_keygen` + `EVP_PKEY_decapsulate` | `EVP_PKEY_Q_keygen` + `EVP_PKEY_kem_encapsulate/decapsulate` |
+| 密钥导出 | `EVP_PKEY_get_raw_public_key/private_key` | 同 |
+| 需要打补丁 | 否（已合入 master） | 是（`libssh2_pq.patch`） |
+| 发布状态 | 仅 master，未进 release（最新 release 1.11.1 无 PQC） | 独立可用 |
+| 适用范围 | 从 master 编译 | 可在 1.11.x 上集成 |
+
+> **结论**：能从 libssh2 master 编译 → 推荐用官方 ML-KEM 支持（更稳、持续维护）；
+> 必须停留在已发布版本（1.11.x）→ 用本项目自实现方案。
+
+---
+
+## 2. 核心修改点总览
 
 | # | 文件 | 行号 | 修改类型 | 用途 |
 |---|---|---|---|---|

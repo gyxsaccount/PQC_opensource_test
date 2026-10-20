@@ -1,6 +1,6 @@
 ﻿# libSSH2 后量子迁移测试报告
 
-生成时间: 2026-10-20T11:44:54.7272119Z
+生成时间: 2026-10-20T12:45:50.2367903Z
 基线工具: OpenSSH_for_Windows_9.5p2, LibreSSL 3.8.2
 
 ## 配置模式
@@ -105,6 +105,48 @@
 | Cipher/MAC | - | 若保持 `aes256-gcm` / `hmac-sha2-256`, 新旧两端通常无断点 |
 
 > 断点消除策略: 迁移过渡期服务端必须保留经典算法双轨运行 (KexAlgorithms mlkem768x25519-sha256,curve25519-sha256,...)。
+
+## 官方 master 分支原生支持 ML-KEM (重要发现)
+
+> libssh2 官方 **master 分支 (2026-04-03 起, PR #1644) 已原生支持混合 ML-KEM KEX**
+> (基于 OpenSSL 3.5+)。官方最新 release 仍是 1.11.1 (不含 PQC),
+> 此能力仅在 master 开发分支。详见 code_modification_points.md 第 1 节。
+
+### 官方支持的 PQ 算法 (编译开关 LIBSSH2_MLKEM)
+
+| KEX 算法名 | 组合 | 与 OpenSSH 9.9 对照 |
+|---|---|---|
+| mlkem768x25519-sha256 | ML-KEM-768 + X25519 | 同款 |
+| mlkem768nistp256-sha256 | ML-KEM-768 + NIST P-256 | OpenSSH 无此款 |
+| mlkem1024nistp384-sha384 | ML-KEM-1024 + NIST P-384 | OpenSSH 无此款 |
+
+### 官方注册表 (src/kex.c L2846-2853)
+
+```c
+#if LIBSSH2_MLKEM
+static const struct kex_method kex_method_ssh_mlkem768_x25519_sha256 = {
+    "mlkem768x25519-sha256",                      /* L2848 */
+    kex_method_mlkem768x25519_key_exchange,       /* L2849 */
+    kex_method_mlkem768x25519_cleanup,            /* L2850 */
+    KEX_METHOD_FLAG_REQ_SIGN_HOSTKEY,
+};
+#endif /* LIBSSH2_MLKEM */
+```
+
+### 官方 OpenSSL 3.5 KEM 后端 (src/openssl.c L2031-2186)
+
+- 密钥生成 `ssh2_mlkem_new()`: `EVP_PKEY_CTX_new_from_name("ML-KEM-768")` -> `EVP_PKEY_keygen` -> `EVP_PKEY_get_raw_*`
+- 解封装 `ssh2_mlkem_get_sk()`: `EVP_PKEY_decapsulate_init` -> `EVP_PKEY_decapsulate`
+- 完整代码见 code_modification_points.md 第 1.3 节
+
+### 官方 vs 自实现
+
+| 对比项 | 官方 master | 本项目自实现 |
+|---|---|---|
+| ML-KEM-768 + X25519 混合 KEX | 原生 | 自实现 |
+| 需要打补丁 | 否 (已合入) | 是 |
+| 发布状态 | 仅 master, 未进 release | 可在 1.11.x 集成 |
+| 适用建议 | 能从 master 编译 -> 用官方 | 需停留 1.11.x -> 用自实现 |
 
 ## 自实现代码位置
 

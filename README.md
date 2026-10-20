@@ -48,12 +48,14 @@ libSSH2/
 | C 工具链 | MinGW-w64 / LLVM-MinGW 或 VS2022 Build Tools | 编译 | 否 |
 | CMake | >= 3.15 | 构建 liboqs / libssh2 | 否 |
 | liboqs | >= 0.12.0 | 提供 ML-KEM-768 等 PQ 原语 | 否 |
-| OpenSSL | >= 3.5.0 | ML-KEM/ML-DSA 原生支持（后端） | 否（算法原生）；混合封装需自实现 |
-| libssh2 | 1.11.0 | 被测软件 | 打补丁集成 PQ（见 `self_implemented/`） |
+| OpenSSL | >= 3.5.0 | ML-KEM/ML-DSA 原生支持（后端） | 否（算法原生） |
+| libssh2 (master) | **master (2026-04+) 原生支持 ML-KEM** | 被测软件 | **否**（官方已合入 PR #1644） |
+| libssh2 (1.11.x release) | 1.11.0 / 1.11.1 | 被测软件 | 🛠 需自实现补丁（见 `self_implemented/`） |
 | OpenSSH 服务端 | >= 9.9（参考） | PQ 混合 KEX 服务端 | 否 |
 
-> **关键结论**：OpenSSL 3.5 / liboqs 已原生提供 ML-KEM/ML-DSA **算法原语**；
-> 需要**自实现**的只是 **SSH 协议层的混合封装与协商逻辑**，见 `demo/self_implemented/`。
+> **关键结论（两条路径）**：
+> 1. **从 master 编译**：libssh2 官方已原生支持 ML-KEM 混合 KEX（OpenSSL 3.5+），**无需自实现**，详见 5.5 节。
+> 2. **从已发布版本（1.11.x）**：官方 release 不含 PQC，需本项目自实现补丁（`hybrid_kex.c` 等）。
 
 ---
 
@@ -218,6 +220,102 @@ MAC: 9 (hmac-md5*, hmac-sha1*, umac-64)
 阶段3: 监控无PQ连接占比清零 → 才移除经典算法 (M2)
 ```
 
+### 5.5 libssh2 官方 master 分支原生支持 ML-KEM（重要发现）
+
+> 经实测核查，libssh2 官方 **master 分支（2026-04-03 起，PR #1644）已原生支持
+> 混合 ML-KEM KEX**，基于 OpenSSL 3.5+，无需自实现补丁。
+> **但注意**：该能力仅在 master 开发分支，官方最新 release 仍是 1.11.1（不含 PQC）。
+
+#### 官方 master 支持的 PQ 算法（编译开关 `LIBSSH2_MLKEM`）
+
+| KEX 算法名 | 组合 | 与 OpenSSH 9.9 对照 |
+|---|---|---|
+| `mlkem768x25519-sha256` | ML-KEM-768 + X25519 | ✅ 同款 |
+| `mlkem768nistp256-sha256` | ML-KEM-768 + NIST P-256 | OpenSSH 无此款 |
+| `mlkem1024nistp384-sha384` | ML-KEM-1024 + NIST P-384 | OpenSSH 无此款 |
+
+#### 官方实现核心代码（src/kex.c 算法注册表 L2846-2853）
+
+```c
+#if LIBSSH2_MLKEM
+static const struct kex_method kex_method_ssh_mlkem768_x25519_sha256 = {
+    "mlkem768x25519-sha256",                       /* L2848 算法名 */
+    kex_method_mlkem768x25519_key_exchange,        /* L2849 KEX 流程 */
+    kex_method_mlkem768x25519_cleanup,             /* L2850 清理 */
+    KEX_METHOD_FLAG_REQ_SIGN_HOSTKEY,              /* 需主机签名 */
+};
+#endif /* LIBSSH2_MLKEM */
+```
+
+#### 官方实现核心代码（src/openssl.c 后端 L2031-2186）
+
+**密钥生成 `ssh2_mlkem_new()`**（真实 OpenSSL 3.5 KEM API）：
+
+```c
+int ssh2_mlkem_new(LIBSSH2_SESSION *session, int mlkem_size,
+                   unsigned char **out_public_key,
+                   unsigned char **out_private_key)
+{
+    EVP_PKEY *key = NULL;
+    EVP_PKEY_CTX *pctx = NULL;
+    ...
+    case 768:
+        evp_name = "ML-KEM-768";                    /* L2051 */
+        privLen = SSH2_MLKEM_768_PRIVATE_KEY_LEN;
+        pubLen = SSH2_MLKEM_768_PUBLIC_KEY_LEN;
+        break;
+    ...
+    pctx = EVP_PKEY_CTX_new_from_name(NULL, evp_name, NULL);   /* L2064 */
+    ...
+    if(EVP_PKEY_keygen_init(pctx) != 1 ||           /* L2068 */
+       EVP_PKEY_keygen(pctx, &key) != 1)
+        goto clean_exit;
+    ...
+    if(EVP_PKEY_get_raw_private_key(key, priv, &actualPrivLen) != 1 ||  /* L2079 */
+       privLen != actualPrivLen)
+        goto clean_exit;
+    if(EVP_PKEY_get_raw_public_key(key, pub, &actualPubLen) != 1 ||     /* L2094 */
+       pubLen != actualPubLen)
+        goto clean_exit;
+    ...
+}
+```
+
+**共享密钥解封装 `ssh2_mlkem_get_sk()`**（decapsulate）：
+
+```c
+int ssh2_mlkem_get_sk(unsigned char *out_shared_key, int mlkem_size,
+                      uint8_t *private_key, uint8_t *server_ciphertext)
+{
+    ...
+    client_key = EVP_PKEY_new_raw_private_key_ex(NULL, evp_name,      /* L2152 */
+                                                 NULL, private_key, privLen);
+    ...
+    rc = EVP_PKEY_decapsulate_init(client_key_ctx, NULL);             /* L2161 */
+    ...
+    rc = EVP_PKEY_decapsulate(client_key_ctx, NULL, &out_len,         /* L2165 */
+                              server_ciphertext, ciphertextLen);
+    ...
+    rc = EVP_PKEY_decapsulate(client_key_ctx, out_shared_key, &out_len, /* L2175 */
+                              server_ciphertext, ciphertextLen);
+    ...
+    return rc == 1 ? 0 : -1;
+}
+```
+
+#### 与自实现方案的关系
+
+| 对比项 | 官方 master（#1644） | 本项目自实现 |
+|---|---|---|
+| ML-KEM-768 + X25519 混合 KEX | ✅ 原生（`kex_method_mlkem768x25519_key_exchange`） | ✅ 自实现（`hybrid_kex.c`） |
+| OpenSSL 3.5 KEM API | 用 `EVP_PKEY_CTX_new_from_name` + `EVP_PKEY_decapsulate` | 用 `EVP_PKEY_Q_keygen` + `EVP_PKEY_kem_encapsulate/decapsulate` |
+| 需要打补丁 | 否（已合入 master） | 是（`libssh2_pq.patch`） |
+| 发布状态 | 仅 master，未进 release | 独立可用 |
+| 适用范围 | 从 master 编译 | 可在 1.11.x 上集成 |
+
+> **结论**：若你的目标环境可从 libssh2 master 编译，**推荐直接用官方 ML-KEM 支持**（更稳、持续维护）；
+> 若必须停留在已发布版本（1.11.x），则使用本项目自实现方案。
+
 ---
 
 ## 6. 版本记录
@@ -228,6 +326,7 @@ MAC: 9 (hmac-md5*, hmac-sha1*, umac-64)
 | v1.1 | 2026-09-16 | 增加真实互通抓包 (`live_negotiation.ps1`)、算法审计 (`algorithm_audit.ps1`)、HTML 报告 |
 | v1.2 | 2026-10-20 | 兼容性矩阵场景标签改为直接标注端点类型（传统/混合/纯后量子），新增代码修改点章节与详细表格说明 |
 | v1.3 | 2026-10-20 | **补全自实现代码**：`hybrid_kex.c`/`hybrid_signature.c` 从骨架占位升级为真实 OpenSSL 3.5 API 调用，新增自实现声明与 `【MOD-K#】/【MOD-S#】` 修改点标记 |
+| v1.4 | 2026-10-20 | **新增官方 master 原生 ML-KEM 支持章节**：核验 PR #1644，展示 `src/kex.c` 注册表与 `src/openssl.c` 真实 KEM 代码，对比官方与自实现方案 |
 
 ### 6.1 组件版本清单（详见 `demo/VERSION_MATRIX.md`）
 
