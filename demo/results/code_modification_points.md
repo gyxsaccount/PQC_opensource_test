@@ -136,12 +136,36 @@ int ssh2_mlkem_get_sk(unsigned char *out_shared_key, int mlkem_size,
 | ML-KEM-768 + X25519 混合 KEX | ✅ 原生 | ✅ 自实现 |
 | OpenSSL 3.5 KEM API | `EVP_PKEY_CTX_new_from_name` + `EVP_PKEY_keygen` + `EVP_PKEY_decapsulate` | `EVP_PKEY_Q_keygen` + `EVP_PKEY_kem_encapsulate/decapsulate` |
 | 密钥导出 | `EVP_PKEY_get_raw_public_key/private_key` | 同 |
+| **混合共享密钥合并方式** ⚠️ | **拼接 (concat)**: ML-KEM_ss(32) ‖ X25519_ss(32) = 64 字节 → SHA256 (kex.c L2493/L2588) | **XOR 合并**: ML-KEM_ss ⊕ X25519_ss = 32 字节 → SHA256 (`hybrid_kex.c` MOD-K1) |
 | 需要打补丁 | 否（已合入 master） | 是（`libssh2_pq.patch`） |
 | 发布状态 | 仅 master，未进 release（最新 release 1.11.1 无 PQC） | 独立可用 |
 | 适用范围 | 从 master 编译 | 可在 1.11.x 上集成 |
 
+> **⚠️ 关键差异点标注**：两个共享密钥的**合并方式不同**。
+>
+> **官方（拼接 concat）** —— `src/kex.c` L2493/L2588:
+> ```c
+> unsigned char shared_secret[32 /* ML-KEM */ + 32 /* X25519 */];
+> ssh2_mlkem_get_sk(shared_secret, 768, ...);          /* 前 32 字节 = ML-KEM */
+> ssh2_curve25519_gen_k(..., server_public_key + CT);  /* 后 32 字节 = X25519 */
+> ssh2_hash(SHA256, shared_secret, 64, ...);           /* 64 字节整体哈希 */
+> ```
+> 这与 **OpenSSH 9.9 的 `mlkem768x25519-sha256` 及 RFC 9708 方案一致**。
+>
+> **自实现（XOR）** —— `hybrid_kex.c` MOD-K1:
+> ```c
+> static void xor_shared_secret(uint8_t out[32],
+>                               const uint8_t a[32], const uint8_t b[32]) {
+>     for (int i = 0; i < 32; i++) out[i] = a[i] ^ b[i];
+> }
+> ```
+>
+> **影响**：两种方式都要求攻击者同时破解 ML-KEM 与 X25519 才能获得会话密钥，
+> 安全性等价。但**协议格式不兼容**——若自实现客户端与官方/OpenSSH 服务端互通，
+> 合并后的 shared secret 不同，握手会失败。若以互通为目标，自实现应改为**拼接方式**。
+
 > **结论**：能从 libssh2 master 编译 → 推荐用官方 ML-KEM 支持（更稳、持续维护）；
-> 必须停留在已发布版本（1.11.x）→ 用本项目自实现方案。
+> 必须停留在已发布版本（1.11.x）→ 用本项目自实现方案（建议改用拼接合并以兼容 OpenSSH 9.9）。
 
 ---
 

@@ -144,9 +144,15 @@ static const struct kex_method kex_method_ssh_mlkem768_x25519_sha256 = {
 | 对比项 | 官方 master | 本项目自实现 |
 |---|---|---|
 | ML-KEM-768 + X25519 混合 KEX | 原生 | 自实现 |
+| **混合共享密钥合并方式 ⚠️** | **拼接 (concat)**: ML-KEM_ss(32) ‖ X25519_ss(32) = 64B → SHA256 (kex.c L2493/L2588) | **XOR 合并**: ML-KEM_ss ⊕ X25519_ss = 32B → SHA256 (hybrid_kex.c MOD-K1) |
 | 需要打补丁 | 否 (已合入) | 是 |
 | 发布状态 | 仅 master, 未进 release | 可在 1.11.x 集成 |
 | 适用建议 | 能从 master 编译 -> 用官方 | 需停留 1.11.x -> 用自实现 |
+
+> **⚠️ 关键差异点**：两共享密钥合并方式不同——官方与 OpenSSH 9.9 用**拼接 (concat)**，
+> 自实现当前用 **XOR**。安全性等价，但**协议格式不兼容**：自实现客户端与官方/OpenSSH
+> 服务端互通会握手失败。若以互通为目标，自实现应改用**拼接方式**（详见
+> [code_modification_points.md](code_modification_points.md) 第 1.4 节）。
 
 ## 自实现代码位置
 

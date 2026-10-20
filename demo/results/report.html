@@ -130,4 +130,21 @@
 <div class='card'><strong>高亮示例 3:</strong> <code>CMakeLists.txt</code> L281-303 构建开关<br>
 <pre style='background:#263238;color:#d6e6f0;padding:10px;border-radius:4px;overflow-x:auto;font-size:12px;'><span style='color:#ff8a80;'>+option(ENABLE_POST_QUANTUM &quot;Enable hybrid post-quantum algorithms (OpenSSL 3.5+)&quot; OFF)</span><br><span style='color:#8c9eff;'> if(CRYPTO_BACKEND STREQUAL &quot;OpenSSL&quot; OR NOT CRYPTO_BACKEND)</span><br><span style='color:#ff8a80;'>-    find_package(OpenSSL )</span><br><span style='color:#ff8a80;'>+    if(ENABLE_POST_QUANTUM)</span><br><span style='color:#ff8a80;'>+        find_package(OpenSSL 3.5 REQUIRED)</span><br><span style='color:#ff8a80;'>+    else()</span><br><span style='color:#ff8a80;'>+        find_package(OpenSSL )</span><br><span style='color:#ff8a80;'>+    endif()</span></pre></div>
 <p class='note'>完整修改点与断点对应关系见 <code>results/code_modification_points.md</code> 第 9 节。</p>
+<h2>官方 master 分支原生支持 ML-KEM</h2>
+<p class='note'>libssh2 官方 master (2026-04-03 起, PR #1644) 已原生支持混合 ML-KEM KEX (OpenSSL 3.5+)。最新 release 1.11.1 不含 PQC。</p>
+<table><tr><th>KEX 算法名</th><th>组合</th><th>与 OpenSSH 9.9 对照</th></tr>
+<tr><td><code>mlkem768x25519-sha256</code></td><td>ML-KEM-768 + X25519</td><td class='ok'>同款</td></tr>
+<tr><td><code>mlkem768nistp256-sha256</code></td><td>ML-KEM-768 + NIST P-256</td><td>OpenSSH 无此款</td></tr>
+<tr><td><code>mlkem1024nistp384-sha384</code></td><td>ML-KEM-1024 + NIST P-384</td><td>OpenSSH 无此款</td></tr>
+</table>
+<div class='card'><strong>官方混合实现核心 (kex.c L2543-2591)</strong> - 两个共享密钥拼接后统一 SHA256<br>
+<pre style='background:#263238;color:#d6e6f0;padding:10px;border-radius:4px;overflow-x:auto;font-size:12px;'><span style='color:#8c9eff;'> shared_secret[32 /* ML-KEM */ + 32 /* X25519 */];</span><br><span style='color:#d6e6f0;'> ssh2_mlkem_get_sk(shared_secret, 768, ...);     /* 前 32B = ML-KEM */</span><br><span style='color:#d6e6f0;'> ssh2_curve25519_gen_k(..., pub + CT);           /* 后 32B = X25519 */</span><br><span style='color:#ff8a80;'> ssh2_hash(SHA256, shared_secret, 64, ...);      /* 64B 整体哈希 */</span></pre></div>
+<div class='card'><strong>官方 vs 自实现 - 关键差异点</strong>
+<table><tr><th>对比项</th><th>官方 master</th><th>本项目自实现</th></tr>
+<tr><td>混合 KEX</td><td class='ok'>原生</td><td class='ok'>自实现</td></tr>
+<tr><td><strong>共享密钥合并方式</strong></td><td><span class='warn'>拼接 concat</span>: ML-KEM(32)+X25519(32)=64B - SHA256</td><td><span class='warn'>XOR 合并</span>: ML-KEM XOR X25519 = 32B - SHA256</td></tr>
+<tr><td>需要打补丁</td><td>否 (已合入 master)</td><td>是</td></tr>
+<tr><td>发布状态</td><td>仅 master, 未进 release</td><td>可在 1.11.x 集成</td></tr>
+</table>
+<p><strong>差异点标注:</strong> 合并方式不同 - 官方与 OpenSSH 9.9 用 <span class='warn'>拼接 (concat)</span>, 自实现当前用 <span class='warn'>XOR</span>。安全性等价, 但<strong>协议格式不兼容</strong>: 自实现客户端与官方/OpenSSH 服务端互通会握手失败。若以互通为目标, 自实现应改用拼接方式 (RFC 9708)。</p></div>
 </body></html>
